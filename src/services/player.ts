@@ -1,8 +1,8 @@
-import {VoiceChannel, Snowflake} from 'discord.js';
-import {Readable} from 'stream';
+import { VoiceChannel, Snowflake } from 'discord.js';
+import { Readable } from 'stream';
 import hasha from 'hasha';
-import ytdl, {videoFormat} from '@distube/ytdl-core';
-import {WriteStream} from 'fs-capacitor';
+import ytDlp from 'youtube-dl-exec';
+import { WriteStream } from 'fs-capacitor';
 import ffmpeg from 'fluent-ffmpeg';
 import shuffle from 'array-shuffle';
 import {
@@ -18,9 +18,9 @@ import {
 } from '@discordjs/voice';
 import FileCacheProvider from './file-cache.js';
 import debug from '../utils/debug.js';
-import {getGuildSettings} from '../utils/get-guild-settings.js';
-import {buildPlayingMessageEmbed} from '../utils/build-embed.js';
-import {Setting} from '@prisma/client';
+import { getGuildSettings } from '../utils/get-guild-settings.js';
+import { buildPlayingMessageEmbed } from '../utils/build-embed.js';
+import { Setting } from '@prisma/client';
 
 export enum MediaSource {
   Youtube,
@@ -58,7 +58,21 @@ export interface PlayerEvents {
   statusChange: (oldStatus: STATUS, newStatus: STATUS) => void;
 }
 
-type YTDLVideoFormat = videoFormat & {loudnessDb?: number};
+interface YtDlpFormat {
+  acodec: string;
+  vcodec: string;
+  ext: string;
+  asr: number | null;
+  format_id: string;
+  url: string;
+  manifest_url?: string;
+  tbr?: number;
+  abr?: number;
+  vbr?: number;
+  loudnessDb?: number; // Custom field we might verify, likely not present by default
+  is_live?: boolean; // Sometimes available
+}
+
 
 export const DEFAULT_VOLUME = 100;
 
@@ -93,7 +107,7 @@ export default class {
   async connect(channel: VoiceChannel): Promise<void> {
     // Always get freshest default volume setting value
     const settings = await getGuildSettings(this.guildId);
-    const {defaultVolume = DEFAULT_VOLUME} = settings;
+    const { defaultVolume = DEFAULT_VOLUME } = settings;
     this.defaultVolume = defaultVolume;
 
     this.voiceConnection = joinVoiceChannel({
@@ -167,7 +181,7 @@ export default class {
       to = currentSong.length + currentSong.offset;
     }
 
-    const stream = await this.getStream(currentSong, {seek: realPositionSeconds, to});
+    const stream = await this.getStream(currentSong, { seek: realPositionSeconds, to });
     this.audioPlayer = createAudioPlayer({
       behaviors: {
         // Needs to be somewhat high for livestreams
@@ -230,7 +244,7 @@ export default class {
         to = currentSong.length + currentSong.offset;
       }
 
-      const stream = await this.getStream(currentSong, {seek: positionSeconds, to});
+      const stream = await this.getStream(currentSong, { seek: positionSeconds, to });
       this.audioPlayer = createAudioPlayer({
         behaviors: {
           // Needs to be somewhat high for livestreams
@@ -255,7 +269,7 @@ export default class {
     } catch (error: unknown) {
       await this.forward(1);
 
-      if ((error as {statusCode: number}).statusCode === 410 && currentSong) {
+      if ((error as { statusCode: number }).statusCode === 410 && currentSong) {
         const channelId = currentSong.addedInChannelId;
 
         if (channelId) {
@@ -294,7 +308,7 @@ export default class {
 
         const settings = await getGuildSettings(this.guildId);
 
-        const {secondsToWaitAfterQueueEmpties} = settings;
+        const { secondsToWaitAfterQueueEmpties } = settings;
         if (secondsToWaitAfterQueueEmpties !== 0) {
           this.disconnectTimer = setTimeout(() => {
             // Make sure we are not accidentally playing
@@ -312,7 +326,7 @@ export default class {
   }
 
   registerVoiceActivityListener(guildSettings: Setting) {
-    const {turnDownVolumeWhenPeopleSpeak, turnDownVolumeWhenPeopleSpeakTarget} = guildSettings;
+    const { turnDownVolumeWhenPeopleSpeak, turnDownVolumeWhenPeopleSpeakTarget } = guildSettings;
     if (!turnDownVolumeWhenPeopleSpeak || !this.voiceConnection) {
       return;
     }
@@ -416,7 +430,7 @@ export default class {
     return this.queue.slice(this.queuePosition + 1);
   }
 
-  add(song: QueuedSong, {immediate = false} = {}): void {
+  add(song: QueuedSong, { immediate = false } = {}): void {
     if (song.playlist || !immediate) {
       // Add to end of queue
       this.queue.push(song);
@@ -494,7 +508,7 @@ export default class {
     return hasha(url);
   }
 
-  private async getStream(song: QueuedSong, options: {seek?: number; to?: number} = {}): Promise<Readable> {
+  private async getStream(song: QueuedSong, options: { seek?: number; to?: number } = {}): Promise<Readable> {
     if (this.status === STATUS.PLAYING) {
       this.audioPlayer?.stop();
     } else if (this.status === STATUS.PAUSED) {
@@ -502,48 +516,54 @@ export default class {
     }
 
     if (song.source === MediaSource.HLS) {
-      return this.createReadStream({url: song.url, cacheKey: song.url});
+      return this.createReadStream({ url: song.url, cacheKey: song.url });
     }
 
     let ffmpegInput: string | null;
     const ffmpegInputOptions: string[] = [];
     let shouldCacheVideo = false;
 
-    let format: YTDLVideoFormat | undefined;
+    let format: YtDlpFormat | undefined;
 
     ffmpegInput = await this.fileCache.getPathFor(this.getHashForCache(song.url));
 
     if (!ffmpegInput) {
       // Not yet cached, must download
-      const info = await ytdl.getInfo(song.url);
+      const output = await ytDlp(song.url, {
+        dumpSingleJson: true,
+        noWarnings: true,
+        preferFreeFormats: true,
+      });
 
-      const formats = info.formats as YTDLVideoFormat[];
+      const info = output as any; // yt-dlp JSON output
+      const formats = info.formats as YtDlpFormat[];
 
-      const filter = (format: ytdl.videoFormat): boolean => format.codecs === 'opus' && format.container === 'webm' && format.audioSampleRate !== undefined && parseInt(format.audioSampleRate, 10) === 48000;
+      // yt-dlp uses 'acodec' for audio codec, 'ext' for container, 'asr' for audio sample rate
+      const filter = (format: YtDlpFormat): boolean =>
+        format.acodec === 'opus' &&
+        format.ext === 'webm' &&
+        format.asr === 48000;
 
       format = formats.find(filter);
 
-      const nextBestFormat = (formats: ytdl.videoFormat[]): ytdl.videoFormat | undefined => {
+      // Fallback logic
+      const nextBestFormat = (formats: YtDlpFormat[]): YtDlpFormat | undefined => {
         if (formats.length < 1) {
           return undefined;
         }
 
-        if (formats[0].isLive) {
-          formats = formats.sort((a, b) => (b as unknown as {audioBitrate: number}).audioBitrate - (a as unknown as {audioBitrate: number}).audioBitrate); // Bad typings
-
-          return formats.find(format => [128, 127, 120, 96, 95, 94, 93].includes(parseInt(format.itag as unknown as string, 10))); // Bad typings
+        // is_live might be on the main info object
+        if (info.is_live) {
+          // Sort by bitrate for live
+          formats = formats.sort((a, b) => (b.abr || 0) - (a.abr || 0));
+          return formats[0]; // Simplified for now
         }
 
         formats = formats
-          .filter(format => format.averageBitrate)
-          .sort((a, b) => {
-            if (a && b) {
-              return b.averageBitrate! - a.averageBitrate!;
-            }
+          .filter(format => format.abr)
+          .sort((a, b) => (b.abr || 0) - (a.abr || 0));
 
-            return 0;
-          });
-        return formats.find(format => !format.bitrate) ?? formats[0];
+        return formats.find(format => !format.vbr) ?? formats[0]; // standard audio only usually has no vbr
       };
 
       if (!format) {
@@ -561,7 +581,7 @@ export default class {
 
       // Don't cache livestreams or long videos
       const MAX_CACHE_LENGTH_SECONDS = 30 * 60; // 30 minutes
-      shouldCacheVideo = !info.player_response.videoDetails.isLiveContent && parseInt(info.videoDetails.lengthSeconds, 10) < MAX_CACHE_LENGTH_SECONDS && !options.seek;
+      shouldCacheVideo = !info.is_live && info.duration < MAX_CACHE_LENGTH_SECONDS && !options.seek;
 
       debug(shouldCacheVideo ? 'Caching video' : 'Not caching video');
 
@@ -656,7 +676,7 @@ export default class {
       await this.forward(1);
       // Auto announce the next song if configured to
       const settings = await getGuildSettings(this.guildId);
-      const {autoAnnounceNextSong} = settings;
+      const { autoAnnounceNextSong } = settings;
       if (autoAnnounceNextSong && this.currentChannel) {
         await this.currentChannel.send({
           embeds: this.getCurrent() ? [buildPlayingMessageEmbed(this)] : [],
@@ -665,7 +685,7 @@ export default class {
     }
   }
 
-  private async createReadStream(options: {url: string; cacheKey: string; ffmpegInputOptions?: string[]; cache?: boolean; volumeAdjustment?: string}): Promise<Readable> {
+  private async createReadStream(options: { url: string; cacheKey: string; ffmpegInputOptions?: string[]; cache?: boolean; volumeAdjustment?: string }): Promise<Readable> {
     return new Promise((resolve, reject) => {
       const capacitor = new WriteStream();
 
