@@ -253,6 +253,7 @@ export default class {
         this.lastSongURL = currentSong.url;
       }
     } catch (error: unknown) {
+      debug('Error in play():', error);
       await this.forward(1);
 
       if ((error as { statusCode: number }).statusCode === 410 && currentSong) {
