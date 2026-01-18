@@ -1,6 +1,9 @@
-name: Build snapshot of PR
+name: Build snapshot on Commit
 
-on: pull_request
+on:
+  push:
+    branches-ignore:
+      - 'dependabot/**'
 
 env:
   REGISTRY_IMAGE: ghcr.io/306bobby-projects/boab-music-bot
@@ -19,7 +22,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_IMAGE }}
-          tags: type=ref,event=pr
+          tags: |
+            type=sha
+            type=ref,event=branch
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -41,8 +46,12 @@ jobs:
         with:
           outputs: type=docker,dest=/tmp/image-${{ env.PLATFORM_PAIR }}.tar
           platforms: linux/amd64
-          tags: |
-            ${{ env.REGISTRY_IMAGE }}:${{ github.sha }}-${{ env.PLATFORM_PAIR }}
+          # We don't push automatically on every commit to avoid noise, but user can change 'outputs' if desired.
+          # For now, let's keep it consistent with PR snapshot -> just build and artifact, or push?
+          # The user asked for "workflow similar to PR flows", PR flow builds artifacts but doesn't push to registry (outputs: type=docker)
+          # However, PR flow tags are specific.
+          # Let's Stick to PR flow: artifact only.
+          tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             COMMIT_HASH=${{ github.sha }}
             BUILD_DATE=${{ steps.current-time.outputs.time }}
@@ -76,15 +85,3 @@ jobs:
           path: /tmp/image-${{ env.PLATFORM_PAIR }}.tar
           if-no-files-found: error
           retention-days: 1
-
-      - name: Save PR number in artifact
-        shell: bash
-        env:
-          PR_NUMBER: ${{ github.event.number }}
-        run: echo $PR_NUMBER > /tmp/pull_request_number.txt
-      - name: Upload PR number
-        uses: actions/upload-artifact@v4
-        with:
-          name: pull_request_number
-          path: /tmp/pull_request_number.txt
-          overwrite: true
