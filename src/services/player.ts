@@ -513,8 +513,6 @@ export default class {
     const ffmpegInputOptions: string[] = [];
     let shouldCacheVideo = false;
 
-    let format: any | undefined;
-
     ffmpegInput = await this.fileCache.getPathFor(this.getHashForCache(song.url));
 
     if (!ffmpegInput) {
@@ -536,6 +534,23 @@ export default class {
         '-reconnect_delay_max',
         '5',
       ]);
+      ffmpegInputOptions.push(...[
+        '-reconnect',
+        '1',
+        '-reconnect_streamed',
+        '1',
+        '-reconnect_delay_max',
+        '5',
+      ]);
+    }
+
+    let loudness: number | undefined;
+
+    try {
+      const info = await YtDlp.getVideoInfo(song.url);
+      loudness = info.loudness;
+    } catch (error) {
+      debug('Failed to get video info from yt-dlp', error);
     }
 
     if (options.seek) {
@@ -551,7 +566,7 @@ export default class {
       cacheKey: song.url,
       ffmpegInputOptions,
       cache: shouldCacheVideo,
-      // volumeAdjustment: format?.loudnessDb ? `${-format.loudnessDb}dB` : undefined,
+      volumeAdjustment: loudness ? `${-loudness}dB` : undefined,
     });
   }
 

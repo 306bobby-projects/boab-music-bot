@@ -32,6 +32,7 @@ export interface YtDlpVideo {
     webpage_url: string;
     is_live: boolean;
     live_status?: string;
+    loudness?: number;
 }
 
 export class YtDlp {
