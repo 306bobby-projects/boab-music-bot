@@ -109,13 +109,13 @@ export default class {
           } else if (interaction.isCommand() || interaction.isButton()) {
             await interaction.reply({content: errorMsg(error as Error), ephemeral: true});
           }
-        } catch {}
+        } catch { }
       }
     });
 
     const spinner = ora('📡 connecting to Discord...').start();
 
-    this.client.once('ready', async () => {
+    this.client.once('clientReady', async () => {
       debug(generateDependencyReport());
 
       // Update commands

@@ -1,14 +1,14 @@
-import { AutocompleteInteraction, ChatInputCommandInteraction } from 'discord.js';
-import { URL } from 'url';
-import { SlashCommandBuilder, SlashCommandSubcommandsOnlyBuilder } from '@discordjs/builders';
-import { inject, injectable, optional } from 'inversify';
+import {AutocompleteInteraction, ChatInputCommandInteraction} from 'discord.js';
+import {URL} from 'url';
+import {SlashCommandBuilder, SlashCommandSubcommandsOnlyBuilder} from '@discordjs/builders';
+import {inject, injectable, optional} from 'inversify';
 import Spotify from 'spotify-web-api-node';
 import Command from './index.js';
-import { TYPES } from '../types.js';
+import {TYPES} from '../types.js';
 import ThirdParty from '../services/third-party.js';
 import getSuggestions from '../utils/get-suggestions.js';
 import KeyValueCacheProvider from '../services/key-value-cache.js';
-import { ONE_HOUR_IN_SECONDS } from '../utils/constants.js';
+import {ONE_HOUR_IN_SECONDS} from '../utils/constants.js';
 import AddQueryToQueue from '../services/add-query-to-queue.js';
 
 @injectable()

@@ -1,12 +1,12 @@
-import { inject, injectable, optional } from 'inversify';
+import {inject, injectable, optional} from 'inversify';
 import * as spotifyURI from 'spotify-uri';
 import ytDlp from 'youtube-dl-exec';
-import { SongMetadata, QueuedPlaylist, MediaSource } from './player.js';
-import { TYPES } from '../types.js';
+import {SongMetadata, QueuedPlaylist, MediaSource, YtDlpVideo} from './player.js';
+import {TYPES} from '../types.js';
 import ffmpeg from 'fluent-ffmpeg';
 import YoutubeAPI from './youtube-api.js';
-import SpotifyAPI, { SpotifyTrack } from './spotify-api.js';
-import { URL } from 'node:url';
+import SpotifyAPI, {SpotifyTrack} from './spotify-api.js';
+import {URL} from 'node:url';
 
 @injectable()
 export default class {
@@ -102,7 +102,7 @@ export default class {
         }
       }
     } catch (err: any) {
-      console.log(`[getSongs] URL parsing/processing failed or threw error:`, err);
+      console.log('[getSongs] URL parsing/processing failed or threw error:', err);
       if (err instanceof Error && err.message === 'Spotify is not enabled!') {
         throw err;
       }
@@ -214,7 +214,7 @@ export default class {
       preferFreeFormats: true,
     });
 
-    const info = output as any;
+    const info = output as unknown as YtDlpVideo;
 
     return {
       url: info.webpage_url,
@@ -241,7 +241,7 @@ export default class {
         for (const v of result.value) {
           accum.push({
             ...v,
-            ...(playlist ? { playlist } : {}),
+            ...(playlist ? {playlist} : {}),
           });
         }
       } else {

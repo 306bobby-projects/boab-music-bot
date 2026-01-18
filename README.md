@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="250" height="250" src="https://raw.githubusercontent.com/museofficial/muse/master/.github/logo.png">
+  <img width="250" height="250" src="https://raw.githubusercontent.com/306bobby-projects/boab-music-bot/master/.github/logo.png">
 </p>
 
 > [!NOTE]
