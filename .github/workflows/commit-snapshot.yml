@@ -11,22 +11,11 @@ env:
 jobs:
   build:
     name: Build snapshot
-    strategy:
-      matrix:
-        runner-platform:
-          - ubuntu-latest
-          - namespace-profile-default-arm64
-        include:
-          - runner-platform: ubuntu-latest
-            build-arch: linux/amd64
-          - runner-platform: namespace-profile-default-arm64
-            build-arch: linux/arm64
-    runs-on: ${{ matrix.runner-platform }}
+    runs-on: ubuntu-latest
     steps:
       - name: Prepare
         run: |
-          platform=${{ matrix.build-arch }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+          echo "PLATFORM_PAIR=linux-amd64" >> $GITHUB_ENV
 
       - name: Docker meta
         id: meta
@@ -56,7 +45,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           outputs: type=docker,dest=/tmp/image-${{ env.PLATFORM_PAIR }}.tar
-          platforms: ${{ matrix.build-arch }}
+          platforms: linux/amd64
           # We don't push automatically on every commit to avoid noise, but user can change 'outputs' if desired.
           # For now, let's keep it consistent with PR snapshot -> just build and artifact, or push?
           # The user asked for "workflow similar to PR flows", PR flow builds artifacts but doesn't push to registry (outputs: type=docker)

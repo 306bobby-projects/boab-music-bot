@@ -8,3 +8,4 @@
 * Docker container now includes `python3` to support `yt-dlp`.
 * CI/CD workflows for Lint and Type Check upgraded to use `actions/checkout@v4` and `setup-node@v4` to fix cache errors.
 * Added `commit-snapshot.yml` workflow to build Docker snapshots on every push.
+* Snapshot builds are now restricted to x86 (`linux/amd64`) only.
