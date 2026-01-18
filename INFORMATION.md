@@ -9,3 +9,4 @@
 * CI/CD workflows for Lint and Type Check upgraded to use `actions/checkout@v4` and `setup-node@v4` to fix cache errors.
 * Added `commit-snapshot.yml` workflow to build Docker snapshots on every push.
 * Snapshot builds are now restricted to x86 (`linux/amd64`) only.
+* Fixed `pr-release.yml` and `publish.yml` to use correct registry and single-arch artifacts.
