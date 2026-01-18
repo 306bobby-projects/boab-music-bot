@@ -1,18 +1,18 @@
-import {Client, Collection, User} from 'discord.js';
-import {inject, injectable} from 'inversify';
+import { Client, Collection, User } from 'discord.js';
+import { inject, injectable } from 'inversify';
 import ora from 'ora';
-import {TYPES} from './types.js';
+import { TYPES } from './types.js';
 import container from './inversify.config.js';
 import Command from './commands/index.js';
 import debug from './utils/debug.js';
 import handleGuildCreate from './events/guild-create.js';
 import handleVoiceStateUpdate from './events/voice-state-update.js';
 import errorMsg from './utils/error-msg.js';
-import {isUserInVoice} from './utils/channels.js';
+import { isUserInVoice } from './utils/channels.js';
 import Config from './services/config.js';
-import {generateDependencyReport} from '@discordjs/voice';
-import {REST} from '@discordjs/rest';
-import {Routes} from 'discord-api-types/v10';
+import { generateDependencyReport } from '@discordjs/voice';
+import { REST } from '@discordjs/rest';
+import { Routes } from 'discord-api-types/v10';
 import registerCommandsOnGuild from './utils/register-commands-on-guild.js';
 
 @injectable()
@@ -71,7 +71,7 @@ export default class {
 
           const requiresVC = command.requiresVC instanceof Function ? command.requiresVC(interaction) : command.requiresVC;
           if (requiresVC && interaction.member && !isUserInVoice(interaction.guild, interaction.member.user as User)) {
-            await interaction.reply({content: errorMsg('gotta be in a voice channel'), ephemeral: true});
+            await interaction.reply({ content: errorMsg('gotta be in a voice channel'), ephemeral: true });
             return;
           }
 
@@ -107,24 +107,24 @@ export default class {
           if ((interaction.isCommand() || interaction.isButton()) && (interaction.replied || interaction.deferred)) {
             await interaction.editReply(errorMsg(error as Error));
           } else if (interaction.isCommand() || interaction.isButton()) {
-            await interaction.reply({content: errorMsg(error as Error), ephemeral: true});
+            await interaction.reply({ content: errorMsg(error as Error), ephemeral: true });
           }
-        } catch {}
+        } catch { }
       }
     });
 
     const spinner = ora('📡 connecting to Discord...').start();
 
-    this.client.once('ready', async () => {
+    this.client.once('clientReady', async () => {
       debug(generateDependencyReport());
 
       // Update commands
-      const rest = new REST({version: '10'}).setToken(this.config.DISCORD_TOKEN);
+      const rest = new REST({ version: '10' }).setToken(this.config.DISCORD_TOKEN);
       if (this.shouldRegisterCommandsOnBot) {
         spinner.text = '📡 updating commands on bot...';
         await rest.put(
           Routes.applicationCommands(this.client.user!.id),
-          {body: this.commandsByName.map(command => command.slashCommand.toJSON())},
+          { body: this.commandsByName.map(command => command.slashCommand.toJSON()) },
         );
       } else {
         spinner.text = '📡 updating commands in all guilds...';
@@ -139,7 +139,7 @@ export default class {
             });
           }),
           // Remove commands registered on bot (if they exist)
-          rest.put(Routes.applicationCommands(this.client.user!.id), {body: []}),
+          rest.put(Routes.applicationCommands(this.client.user!.id), { body: [] }),
         ],
         );
       }

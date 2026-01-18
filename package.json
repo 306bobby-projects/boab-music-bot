@@ -131,7 +131,7 @@
     "spotify-uri": "^3.0.2",
     "spotify-web-api-node": "^5.0.2",
     "sync-fetch": "^0.3.1",
-    "tsx": "3.8.2",
+    "tsx": "^4.7.1",
     "xbytes": "^1.7.0",
     "youtube-dl-exec": "^3.0.28",
     "ytsr": "^3.8.4"
