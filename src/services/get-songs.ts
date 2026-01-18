@@ -23,8 +23,10 @@ export default class {
     let extraMsg = '';
 
     // Test if it's a complete URL
+    console.log(`[getSongs] Processing query: "${query}"`);
     try {
       const url = new URL(query);
+      console.log(`[getSongs] Parsed URL host: "${url.host}"`);
 
       const YOUTUBE_HOSTS = [
         'www.youtube.com',
@@ -81,7 +83,7 @@ export default class {
         }
 
         newSongs.push(...convertedSongs);
-      } else if (url.host === 'soundcloud.com' || url.host === 'm.soundcloud.com' || url.host === 'on.soundcloud.com') {
+      } else if (url.host === 'soundcloud.com' || url.host === 'm.soundcloud.com' || url.host === 'on.soundcloud.com' || url.host === 'api.soundcloud.com') {
         // Strip everything after the first ?
         url.search = '';
         const song = await this.soundcloudVideo(url.href);
@@ -100,8 +102,28 @@ export default class {
         }
       }
     } catch (err: any) {
+      console.log(`[getSongs] URL parsing/processing failed or threw error:`, err);
       if (err instanceof Error && err.message === 'Spotify is not enabled!') {
         throw err;
+      }
+
+      // Check if it might be a SoundCloud URL missing protocol
+      if (query.includes('soundcloud.com') && !query.startsWith('http')) {
+        try {
+          const url = new URL(`https://${query}`);
+          // Recurse or handle directly? Let's just handle it here to avoid deep recursion loop risk
+          if (url.host === 'soundcloud.com' || url.host === 'm.soundcloud.com' || url.host === 'on.soundcloud.com' || url.host === 'api.soundcloud.com') {
+            // Strip everything after the first ?
+            url.search = '';
+            const song = await this.soundcloudVideo(url.href);
+            if (song) {
+              newSongs.push(song);
+              return [newSongs, extraMsg];
+            }
+          }
+        } catch {
+          // Ignore, continue to YouTube search
+        }
       }
 
       // Not a URL, must search YouTube
