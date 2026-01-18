@@ -1,5 +1,6 @@
 import { inject, injectable, optional } from 'inversify';
 import * as spotifyURI from 'spotify-uri';
+import ytDlp from 'youtube-dl-exec';
 import { SongMetadata, QueuedPlaylist, MediaSource } from './player.js';
 import { TYPES } from '../types.js';
 import ffmpeg from 'fluent-ffmpeg';
@@ -80,6 +81,15 @@ export default class {
         }
 
         newSongs.push(...convertedSongs);
+      } else if (url.host === 'soundcloud.com' || url.host === 'm.soundcloud.com' || url.host === 'on.soundcloud.com') {
+        // Strip everything after the first ?
+        url.search = '';
+        const song = await this.soundcloudVideo(url.href);
+        if (song) {
+          newSongs.push(song);
+        } else {
+          throw new Error('that doesn\'t exist');
+        }
       } else {
         const song = await this.httpLiveStream(query);
 
@@ -173,6 +183,28 @@ export default class {
         });
       });
     });
+  }
+
+  private async soundcloudVideo(url: string): Promise<SongMetadata> {
+    const output = await ytDlp(url, {
+      dumpSingleJson: true,
+      noWarnings: true,
+      preferFreeFormats: true,
+    });
+
+    const info = output as any;
+
+    return {
+      url: info.webpage_url,
+      source: MediaSource.SoundCloud,
+      title: info.title,
+      artist: info.uploader,
+      length: info.duration,
+      offset: 0,
+      playlist: null,
+      isLive: false,
+      thumbnailUrl: info.thumbnail,
+    };
   }
 
   private async spotifyToYouTube(tracks: SpotifyTrack[], shouldSplitChapters: boolean, playlist?: QueuedPlaylist | undefined): Promise<[SongMetadata[], number, number]> {

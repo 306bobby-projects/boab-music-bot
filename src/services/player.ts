@@ -25,6 +25,7 @@ import { Setting } from '@prisma/client';
 export enum MediaSource {
   Youtube,
   HLS,
+  SoundCloud,
 }
 
 export interface QueuedPlaylist {
@@ -581,7 +582,7 @@ export default class {
 
       // Don't cache livestreams or long videos
       const MAX_CACHE_LENGTH_SECONDS = 30 * 60; // 30 minutes
-      shouldCacheVideo = !info.is_live && info.duration < MAX_CACHE_LENGTH_SECONDS && !options.seek;
+      shouldCacheVideo = !info.is_live && info.duration < MAX_CACHE_LENGTH_SECONDS && !options.seek && song.source !== MediaSource.SoundCloud;
 
       debug(shouldCacheVideo ? 'Caching video' : 'Not caching video');
 
