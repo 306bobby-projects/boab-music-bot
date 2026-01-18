@@ -1,7 +1,7 @@
 import {inject, injectable, optional} from 'inversify';
 import * as spotifyURI from 'spotify-uri';
 import ytDlp from 'youtube-dl-exec';
-import {SongMetadata, QueuedPlaylist, MediaSource} from './player.js';
+import {SongMetadata, QueuedPlaylist, MediaSource, YtDlpVideo} from './player.js';
 import {TYPES} from '../types.js';
 import ffmpeg from 'fluent-ffmpeg';
 import YoutubeAPI from './youtube-api.js';
@@ -214,7 +214,7 @@ export default class {
       preferFreeFormats: true,
     });
 
-    const info = output as any;
+    const info = output as unknown as YtDlpVideo;
 
     return {
       url: info.webpage_url,

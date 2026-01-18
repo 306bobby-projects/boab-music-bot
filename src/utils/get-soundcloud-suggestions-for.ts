@@ -6,6 +6,16 @@ export interface SoundCloudSuggestion {
   url: string;
 }
 
+interface YtDlpEntry {
+  title: string;
+  uploader: string;
+  url: string;
+}
+
+interface YtDlpPlaylistOutput {
+  entries?: YtDlpEntry[];
+}
+
 const getSoundCloudSuggestionsFor = async (query: string, limit = 5): Promise<SoundCloudSuggestion[]> => {
   try {
     const output = await ytDlp(`scsearch${limit}:${query}`, {
@@ -14,13 +24,13 @@ const getSoundCloudSuggestionsFor = async (query: string, limit = 5): Promise<So
       flatPlaylist: true,
     });
 
-    const info = output as any;
+    const info = output as unknown as YtDlpPlaylistOutput;
 
     if (!info.entries) {
       return [];
     }
 
-    return (info.entries as any[]).map(entry => ({
+    return info.entries.map(entry => ({
       title: entry.title,
       uploader: entry.uploader,
       url: entry.url.startsWith('http') ? entry.url : `https://${entry.url}`,

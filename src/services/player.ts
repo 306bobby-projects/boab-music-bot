@@ -59,7 +59,7 @@ export interface PlayerEvents {
   statusChange: (oldStatus: STATUS, newStatus: STATUS) => void;
 }
 
-interface YtDlpFormat {
+export interface YtDlpFormat {
   acodec: string;
   vcodec: string;
   ext: string;
@@ -72,6 +72,17 @@ interface YtDlpFormat {
   vbr?: number;
   loudnessDb?: number; // Custom field we might verify, likely not present by default
   is_live?: boolean; // Sometimes available
+}
+
+export interface YtDlpVideo {
+  formats: YtDlpFormat[];
+  is_live?: boolean;
+  duration: number;
+  webpage_url: string;
+  title: string;
+  uploader: string;
+  thumbnail: string;
+  url: string;
 }
 
 export const DEFAULT_VOLUME = 100;
@@ -535,8 +546,8 @@ export default class {
         preferFreeFormats: true,
       });
 
-      const info = output as any; // Yt-dlp JSON output
-      const formats = info.formats as YtDlpFormat[];
+      const info = output as unknown as YtDlpVideo; // Yt-dlp JSON output
+      const {formats} = info;
 
       // Yt-dlp uses 'acodec' for audio codec, 'ext' for container, 'asr' for audio sample rate
       const filter = (format: YtDlpFormat): boolean =>

@@ -1,7 +1,7 @@
 import {APIApplicationCommandOptionChoice} from 'discord-api-types/v10';
 import SpotifyWebApi from 'spotify-web-api-node';
 import getYouTubeSuggestionsFor from './get-youtube-suggestions-for.js';
-import getSoundCloudSuggestionsFor from './get-soundcloud-suggestions-for.js';
+import getSoundCloudSuggestionsFor, {SoundCloudSuggestion} from './get-soundcloud-suggestions-for.js';
 
 const filterDuplicates = <T extends {name: string}>(items: T[]) => {
   const results: T[] = [];
@@ -31,7 +31,7 @@ const getSuggestions = async (query: string, spotify?: SpotifyWebApi, limit = 25
   // SoundCloud
   promises.push(getSoundCloudSuggestionsFor(query, 5));
 
-  const [youtubeSuggestions, spotifyResponse, soundcloudSuggestions] = await Promise.all(promises) as [string[], any, any[]];
+  const [youtubeSuggestions, spotifyResponse, soundcloudSuggestions] = await Promise.all(promises) as [string[], Awaited<ReturnType<SpotifyWebApi['search']>> | undefined, SoundCloudSuggestion[]];
 
   const suggestions: APIApplicationCommandOptionChoice[] = [];
 
@@ -51,7 +51,7 @@ const getSuggestions = async (query: string, spotify?: SpotifyWebApi, limit = 25
   // Take up to 5 SoundCloud suggestions
   if (soundcloudSuggestions) {
     suggestions.push(
-      ...soundcloudSuggestions.map((suggestion: any) => ({
+      ...soundcloudSuggestions.map(suggestion => ({
         name: `SoundCloud: ☁️ ${suggestion.title} - ${suggestion.uploader}`,
         value: suggestion.url,
       })),
@@ -72,14 +72,14 @@ const getSuggestions = async (query: string, spotify?: SpotifyWebApi, limit = 25
       const maxTracks = maxSpotify - maxAlbums;
 
       suggestions.push(
-        ...spotifyAlbums.slice(0, maxAlbums).map((album: any) => ({
+        ...spotifyAlbums.slice(0, maxAlbums).map(album => ({
           name: `Spotify: 💿 ${album.name}${album.artists.length > 0 ? ` - ${album.artists[0].name}` : ''}`,
           value: `spotify:album:${album.id}`,
         })),
       );
 
       suggestions.push(
-        ...spotifyTracks.slice(0, maxTracks).map((track: any) => ({
+        ...spotifyTracks.slice(0, maxTracks).map(track => ({
           name: `Spotify: 🎵 ${track.name}${track.artists.length > 0 ? ` - ${track.artists[0].name}` : ''}`,
           value: `spotify:track:${track.id}`,
         })),
