@@ -1,11 +1,11 @@
-import {inject, injectable, optional} from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import * as spotifyURI from 'spotify-uri';
-import {SongMetadata, QueuedPlaylist, MediaSource} from './player.js';
-import {TYPES} from '../types.js';
+import { SongMetadata, QueuedPlaylist, MediaSource } from './player.js';
+import { TYPES } from '../types.js';
 import ffmpeg from 'fluent-ffmpeg';
 import YoutubeAPI from './youtube-api.js';
-import SpotifyAPI, {SpotifyTrack} from './spotify-api.js';
-import {URL} from 'node:url';
+import SpotifyAPI, { SpotifyTrack } from './spotify-api.js';
+import { URL } from 'node:url';
 
 @injectable()
 export default class {
@@ -34,6 +34,15 @@ export default class {
       ];
 
       if (YOUTUBE_HOSTS.includes(url.host)) {
+        // Remove the 'list' parameter if it's a video being watched (not a pure playlist link)
+        if (url.pathname === '/watch') {
+          url.searchParams.delete('list');
+        }
+
+        if (url.host === 'youtu.be') {
+          url.searchParams.delete('si');
+        }
+
         // YouTube source
         if (url.searchParams.get('list')) {
           // YouTube playlist
@@ -178,7 +187,7 @@ export default class {
         for (const v of result.value) {
           accum.push({
             ...v,
-            ...(playlist ? {playlist} : {}),
+            ...(playlist ? { playlist } : {}),
           });
         }
       } else {
