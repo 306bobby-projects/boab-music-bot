@@ -14,4 +14,4 @@
 - [ ] Switch to yt-dlp, and make updating this component dynamic in the docker image, updating in a specific time duration (i.e 24 hours)
 - [ ] Add a radio functionality, with the chat command syntax "radio *number*" where the queue is auto-populated based on played song and number of songs given. This may need to be youtube specific
 - [ ] Run code formatter/linter
-- [ ] Review and update all CI workflows (publish.yml updated, others need check)
+- [x] Review and update all CI workflows (publish.yml updated, others need check)
