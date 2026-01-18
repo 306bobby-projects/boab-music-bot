@@ -86,7 +86,6 @@
   },
   "dependencies": {
     "@discordjs/builders": "1.1.0",
-    "@discordjs/opus": "^0.10.0",
     "@discordjs/rest": "1.0.1",
     "@discordjs/voice": "0.18.0",
     "@distube/ytsr": "^2.0.4",
@@ -110,6 +109,7 @@
     "make-dir": "^3.1.0",
     "node-emoji": "^1.10.0",
     "nodesplash": "^0.1.1",
+    "opusscript": "^0.0.8",
     "ora": "^8.1.0",
     "p-event": "^5.0.1",
     "p-limit": "^6.1.0",
