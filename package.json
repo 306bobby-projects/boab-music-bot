@@ -1,9 +1,9 @@
 {
-  "name": "muse",
+  "name": "boab",
   "version": "2.11.1",
   "description": "🎧 a self-hosted Discord music bot that doesn't suck ",
-  "repository": "git@github.com:museofficial/muse.git",
-  "author": "Max Isom <hi@maxisom.me>",
+  "repository": "git@github.com:306bobby-projects/boab-music-bot.git",
+  "author": "Bobby",
   "license": "MIT",
   "private": true,
   "types": "dts/types",
