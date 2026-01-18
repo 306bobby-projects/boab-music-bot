@@ -139,4 +139,4 @@ jobs:
           prerelease: ${{ steps.changelog_reader.outputs.status == 'prereleased' }}
           draft: ${{ steps.changelog_reader.outputs.status == 'unreleased' }}
           allowUpdates: true
-          token: ${{ secrets.GH_PAT }}
+          token: ${{ secrets.GITHUB_TOKEN }}
