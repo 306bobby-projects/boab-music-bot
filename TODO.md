@@ -8,8 +8,8 @@
 
 ---
 
-- [ ] Audit repository for broken or deprecated imports (e.g. discord.js, ytdl-core)
-- [ ] Rename project docs and readme to new naming. Ignore changelog, it can stay as is
+- [x] Audit repository for broken or deprecated imports (e.g. discord.js, ytdl-core)
+- [x] Rename project docs and readme to new naming. Ignore changelog, it can stay as is
 - [ ] Add error handling to music queue to prevent crashes
 - [ ] Switch to yt-dlp, and make updating this component dynamic in the docker image, updating in a specific time duration (i.e 24 hours)
 - [ ] Add a radio functionality, with the chat command syntax "radio *number*" where the queue is auto-populated based on played song and number of songs given. This may need to be youtube specific
