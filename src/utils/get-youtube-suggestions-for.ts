@@ -1,7 +1,7 @@
 import got from 'got';
 
 const getYouTubeSuggestionsFor = async (query: string): Promise<string[]> => {
-  const [_, suggestions] = await got('https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=', {
+  const [_, suggestions] = await got('https://suggestqueries.google.com/complete/search', {
     searchParams: {
       client: 'firefox',
       ds: 'yt',
