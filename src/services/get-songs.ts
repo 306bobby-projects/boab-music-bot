@@ -1,12 +1,26 @@
-import { inject, injectable, optional } from 'inversify';
+import {inject, injectable, optional} from 'inversify';
 import * as spotifyURI from 'spotify-uri';
 import ytDlp from 'youtube-dl-exec';
-import { SongMetadata, QueuedPlaylist, MediaSource, YtDlpVideo } from './player.js';
-import { TYPES } from '../types.js';
+import {SongMetadata, QueuedPlaylist, MediaSource, YtDlpVideo} from './player.js';
+import {TYPES} from '../types.js';
 import ffmpeg from 'fluent-ffmpeg';
 import YoutubeAPI from './youtube-api.js';
-import SpotifyAPI, { SpotifyTrack } from './spotify-api.js';
-import { URL } from 'node:url';
+import SpotifyAPI, {SpotifyTrack} from './spotify-api.js';
+import {URL} from 'node:url';
+
+interface YtDlpPlaylistEntry {
+  url: string;
+  title: string;
+  uploader?: string;
+  duration?: number;
+}
+
+interface YtDlpPlaylistOutput {
+  _type: 'playlist';
+  title: string;
+  uploader?: string;
+  entries: YtDlpPlaylistEntry[];
+}
 
 @injectable()
 export default class {
@@ -215,27 +229,33 @@ export default class {
       flatPlaylist: true,
     });
 
-    const info = output as any;
+    const isPlaylist = (info: unknown): info is YtDlpPlaylistOutput =>
+      typeof info === 'object'
+      && info !== null
+      && '_type' in info
+      && (info as YtDlpPlaylistOutput)._type === 'playlist'
+      && 'entries' in info
+      && Array.isArray((info as YtDlpPlaylistOutput).entries);
 
-    if (info._type === 'playlist' && info.entries) {
-      // Playlist
-      return info.entries.map((entry: any) => ({
+    if (isPlaylist(output)) {
+      return output.entries.map((entry: YtDlpPlaylistEntry) => ({
         url: entry.url,
         source: MediaSource.SoundCloud,
         title: entry.title,
-        artist: entry.uploader ?? info.uploader ?? 'Unknown',
-        length: entry.duration ?? 0, // Duration might be missing in flat playlist
+        artist: entry.uploader ?? output.uploader ?? 'Unknown',
+        length: entry.duration ?? 0,
         offset: 0,
         playlist: {
-          title: info.title,
+          title: output.title,
           source: url,
         },
         isLive: false,
-        thumbnailUrl: null, // Thumbnail might be missing or need separate fetch
+        thumbnailUrl: null,
       }));
     }
 
-    // Single video
+    const info = output as unknown as YtDlpVideo;
+
     return [{
       url: info.webpage_url ?? info.url,
       source: MediaSource.SoundCloud,
@@ -261,7 +281,7 @@ export default class {
         for (const v of result.value) {
           accum.push({
             ...v,
-            ...(playlist ? { playlist } : {}),
+            ...(playlist ? {playlist} : {}),
           });
         }
       } else {

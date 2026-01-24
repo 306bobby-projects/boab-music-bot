@@ -1,9 +1,9 @@
-import { APIApplicationCommandOptionChoice } from 'discord-api-types/v10';
+import {APIApplicationCommandOptionChoice} from 'discord-api-types/v10';
 import SpotifyWebApi from 'spotify-web-api-node';
 import getYouTubeSuggestionsFor from './get-youtube-suggestions-for.js';
-import getSoundCloudSuggestionsFor, { SoundCloudSuggestion } from './get-soundcloud-suggestions-for.js';
+import getSoundCloudSuggestionsFor, {SoundCloudSuggestion} from './get-soundcloud-suggestions-for.js';
 
-const filterDuplicates = <T extends { name: string }>(items: T[]) => {
+const filterDuplicates = <T extends {name: string}>(items: T[]) => {
   const results: T[] = [];
 
   for (const item of items) {
@@ -18,7 +18,7 @@ const filterDuplicates = <T extends { name: string }>(items: T[]) => {
 const getSuggestions = async (query: string, spotify?: SpotifyWebApi, limit = 25): Promise<APIApplicationCommandOptionChoice[]> => {
   const [youtubeSuggestions, spotifyResponse, soundcloudSuggestions] = await Promise.all([
     getYouTubeSuggestionsFor(query).catch((): string[] => []),
-    spotify ? spotify.search(query, ['album', 'track'], { limit: 10 }).catch(() => undefined) : Promise.resolve(undefined),
+    spotify ? spotify.search(query, ['album', 'track'], {limit: 10}).catch(() => undefined) : Promise.resolve(undefined),
     getSoundCloudSuggestionsFor(query, 5).catch((): SoundCloudSuggestion[] => []),
   ]);
 
