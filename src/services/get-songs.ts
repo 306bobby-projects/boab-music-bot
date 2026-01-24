@@ -238,20 +238,30 @@ export default class {
       && Array.isArray((info as YtDlpPlaylistOutput).entries);
 
     if (isPlaylist(output)) {
-      return output.entries.map((entry: YtDlpPlaylistEntry) => ({
-        url: entry.url,
-        source: MediaSource.SoundCloud,
-        title: entry.title,
-        artist: entry.uploader ?? output.uploader ?? 'Unknown',
-        length: entry.duration ?? 0,
-        offset: 0,
-        playlist: {
-          title: output.title,
-          source: url,
-        },
-        isLive: false,
-        thumbnailUrl: null,
-      }));
+      return output.entries.map((entry: YtDlpPlaylistEntry) => {
+        let {title} = entry;
+
+        if (!title && entry.url) {
+          // Fallback: extract title from URL
+          const parts = entry.url.split('/');
+          title = parts[parts.length - 1].replace(/-/g, ' ');
+        }
+
+        return {
+          url: entry.url,
+          source: MediaSource.SoundCloud,
+          title: title ?? 'Unknown Title',
+          artist: entry.uploader ?? output.uploader ?? 'Unknown',
+          length: entry.duration ?? 0,
+          offset: 0,
+          playlist: {
+            title: output.title,
+            source: url,
+          },
+          isLive: false,
+          thumbnailUrl: null,
+        };
+      });
     }
 
     const info = output as unknown as YtDlpVideo;
