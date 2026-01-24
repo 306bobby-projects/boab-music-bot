@@ -1,12 +1,12 @@
-import {inject, injectable, optional} from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import * as spotifyURI from 'spotify-uri';
 import ytDlp from 'youtube-dl-exec';
-import {SongMetadata, QueuedPlaylist, MediaSource, YtDlpVideo} from './player.js';
-import {TYPES} from '../types.js';
+import { SongMetadata, QueuedPlaylist, MediaSource, YtDlpVideo } from './player.js';
+import { TYPES } from '../types.js';
 import ffmpeg from 'fluent-ffmpeg';
 import YoutubeAPI from './youtube-api.js';
-import SpotifyAPI, {SpotifyTrack} from './spotify-api.js';
-import {URL} from 'node:url';
+import SpotifyAPI, { SpotifyTrack } from './spotify-api.js';
+import { URL } from 'node:url';
 
 @injectable()
 export default class {
@@ -86,9 +86,9 @@ export default class {
       } else if (url.host === 'soundcloud.com' || url.host === 'm.soundcloud.com' || url.host === 'on.soundcloud.com' || url.host === 'api.soundcloud.com') {
         // Strip everything after the first ?
         url.search = '';
-        const song = await this.soundcloudVideo(url.href);
-        if (song) {
-          newSongs.push(song);
+        const songs = await this.soundcloudSource(url.href);
+        if (songs) {
+          newSongs.push(...songs);
         } else {
           throw new Error('that doesn\'t exist');
         }
@@ -115,9 +115,9 @@ export default class {
           if (url.host === 'soundcloud.com' || url.host === 'm.soundcloud.com' || url.host === 'on.soundcloud.com' || url.host === 'api.soundcloud.com') {
             // Strip everything after the first ?
             url.search = '';
-            const song = await this.soundcloudVideo(url.href);
-            if (song) {
-              newSongs.push(song);
+            const songs = await this.soundcloudSource(url.href);
+            if (songs) {
+              newSongs.push(...songs);
               return [newSongs, extraMsg];
             }
           }
@@ -207,17 +207,37 @@ export default class {
     });
   }
 
-  private async soundcloudVideo(url: string): Promise<SongMetadata> {
+  private async soundcloudSource(url: string): Promise<SongMetadata[]> {
     const output = await ytDlp(url, {
       dumpSingleJson: true,
       noWarnings: true,
       preferFreeFormats: true,
+      flatPlaylist: true,
     });
 
-    const info = output as unknown as YtDlpVideo;
+    const info = output as any;
 
-    return {
-      url: info.webpage_url,
+    if (info._type === 'playlist' && info.entries) {
+      // Playlist
+      return info.entries.map((entry: any) => ({
+        url: entry.url,
+        source: MediaSource.SoundCloud,
+        title: entry.title,
+        artist: entry.uploader ?? info.uploader ?? 'Unknown',
+        length: entry.duration ?? 0, // Duration might be missing in flat playlist
+        offset: 0,
+        playlist: {
+          title: info.title,
+          source: url,
+        },
+        isLive: false,
+        thumbnailUrl: null, // Thumbnail might be missing or need separate fetch
+      }));
+    }
+
+    // Single video
+    return [{
+      url: info.webpage_url ?? info.url,
       source: MediaSource.SoundCloud,
       title: info.title,
       artist: info.uploader,
@@ -226,7 +246,7 @@ export default class {
       playlist: null,
       isLive: false,
       thumbnailUrl: info.thumbnail,
-    };
+    }];
   }
 
   private async spotifyToYouTube(tracks: SpotifyTrack[], shouldSplitChapters: boolean, playlist?: QueuedPlaylist | undefined): Promise<[SongMetadata[], number, number]> {
@@ -241,7 +261,7 @@ export default class {
         for (const v of result.value) {
           accum.push({
             ...v,
-            ...(playlist ? {playlist} : {}),
+            ...(playlist ? { playlist } : {}),
           });
         }
       } else {
