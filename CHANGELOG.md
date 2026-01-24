@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-01-23
+### Added
+- SoundCloud playlist playback
+
+### Fixed
+- Search results not returning when a source has an error
+
 ## [1.0.0] - 2026-01-18
 - BOAB initial release
 - Switch from yt-dl to yt-dlp
