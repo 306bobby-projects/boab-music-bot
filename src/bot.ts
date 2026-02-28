@@ -100,7 +100,7 @@ export default class {
           }
         }
       } catch (error: unknown) {
-        debug(error);
+        console.error(error);
 
         // This can fail if the message was deleted, and we don't want to crash the whole bot
         try {

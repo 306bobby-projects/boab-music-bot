@@ -1,5 +1,6 @@
 import {VoiceChannel, Snowflake} from 'discord.js';
 import {Readable} from 'stream';
+import {ChildProcess} from 'node:child_process';
 import hasha from 'hasha';
 import ytDlp from 'youtube-dl-exec';
 import {WriteStream} from 'fs-capacitor';
@@ -72,6 +73,7 @@ export interface YtDlpFormat {
   vbr?: number;
   loudnessDb?: number; // Custom field we might verify, likely not present by default
   is_live?: boolean; // Sometimes available
+  http_headers?: Record<string, string>;
 }
 
 export interface YtDlpVideo {
@@ -83,6 +85,7 @@ export interface YtDlpVideo {
   uploader: string;
   thumbnail: string;
   url: string;
+  http_headers?: Record<string, string>;
 }
 
 export const DEFAULT_VOLUME = 100;
@@ -130,21 +133,7 @@ export default class {
 
     const guildSettings = await getGuildSettings(this.guildId);
 
-    // Workaround to disable keepAlive
-    this.voiceConnection.on('stateChange', (oldState, newState) => {
-      /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
-      const oldNetworking = Reflect.get(oldState, 'networking');
-      const newNetworking = Reflect.get(newState, 'networking');
-
-      const networkStateChangeHandler = (_: any, newNetworkState: any) => {
-        const newUdp = Reflect.get(newNetworkState, 'udp');
-        clearInterval(newUdp?.keepAliveInterval);
-      };
-
-      oldNetworking?.off('stateChange', networkStateChangeHandler);
-      newNetworking?.on('stateChange', networkStateChangeHandler);
-      /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
-
+    this.voiceConnection.on('stateChange', (_, newState) => {
       this.currentChannel = channel;
       if (newState.status === VoiceConnectionStatus.Ready) {
         this.registerVoiceActivityListener(guildSettings);
@@ -590,6 +579,11 @@ export default class {
 
       ffmpegInput = format.url;
 
+      const userAgent = format?.http_headers?.['User-Agent'] ?? info.http_headers?.['User-Agent'];
+      if (userAgent) {
+        ffmpegInputOptions.push('-user_agent', userAgent);
+      }
+
       // Don't cache livestreams or long videos
       const MAX_CACHE_LENGTH_SECONDS = 30 * 60; // 30 minutes
       shouldCacheVideo = !info.is_live && info.duration < MAX_CACHE_LENGTH_SECONDS && !options.seek && song.source !== MediaSource.SoundCloud;
@@ -615,7 +609,9 @@ export default class {
     }
 
     return this.createReadStream({
-      url: ffmpegInput,
+      url: song.url,
+      formatId: format?.format_id,
+      filePath: ffmpegInput,
       cacheKey: song.url,
       ffmpegInputOptions,
       cache: shouldCacheVideo,
@@ -657,7 +653,16 @@ export default class {
     }
 
     if (this.audioPlayer.listeners('stateChange').length === 0) {
-      this.audioPlayer.on(AudioPlayerStatus.Idle, this.onAudioPlayerIdle.bind(this));
+      this.audioPlayer.on('stateChange', (oldState, newState) => {
+        debug(`AudioPlayer state change: ${oldState.status} => ${newState.status}`);
+        if (newState.status === AudioPlayerStatus.Idle && this.status === STATUS.PLAYING) {
+          void this.onAudioPlayerIdle(oldState, newState);
+        }
+      });
+
+      this.audioPlayer.on('error', error => {
+        console.error('AudioPlayer error:', error);
+      });
     }
   }
 
@@ -696,7 +701,7 @@ export default class {
     }
   }
 
-  private async createReadStream(options: {url: string; cacheKey: string; ffmpegInputOptions?: string[]; cache?: boolean; volumeAdjustment?: string}): Promise<Readable> {
+  private async createReadStream(options: {url: string; formatId?: string; filePath?: string | null; cacheKey: string; ffmpegInputOptions?: string[]; cache?: boolean; volumeAdjustment?: string}): Promise<Readable> {
     return new Promise((resolve, reject) => {
       const capacitor = new WriteStream();
 
@@ -708,16 +713,44 @@ export default class {
       const returnedStream = capacitor.createReadStream();
       let hasReturnedStreamClosed = false;
 
-      const stream = ffmpeg(options.url)
+      let ffmpegInput: string | Readable;
+      let ytDlpProcess: ChildProcess | undefined;
+
+      if (options.filePath) {
+        ffmpegInput = options.filePath;
+      } else {
+        // Use yt-dlp to stream
+        ytDlpProcess = ytDlp.exec(options.url, {
+          format: options.formatId ?? 'bestaudio',
+          output: '-',
+        }) as ChildProcess;
+
+        if (ytDlpProcess.stdout) {
+          ffmpegInput = ytDlpProcess.stdout;
+        } else {
+          reject(new Error('yt-dlp stdout is not available'));
+          return;
+        }
+
+        ytDlpProcess.on('error', (error: Error) => {
+          console.error('yt-dlp error:', error);
+        });
+      }
+
+      const stream = ffmpeg(ffmpegInput)
         .inputOptions(options?.ffmpegInputOptions ?? ['-re'])
         .noVideo()
         .audioCodec('libopus')
-        .outputFormat('webm')
+        .outputFormat('ogg')
         .addOutputOption(['-filter:a', `volume=${options?.volumeAdjustment ?? '1'}`])
         .on('error', error => {
           if (!hasReturnedStreamClosed) {
+            console.error('ffmpeg error:', error);
             reject(error);
           }
+        })
+        .on('stderr', stderrLine => {
+          debug(`ffmpeg stderr: ${stderrLine}`);
         })
         .on('start', command => {
           debug(`Spawned ffmpeg with ${command}`);
@@ -728,6 +761,9 @@ export default class {
       returnedStream.on('close', () => {
         if (!options.cache) {
           stream.kill('SIGKILL');
+          if (ytDlpProcess) {
+            ytDlpProcess.kill('SIGKILL');
+          }
         }
 
         hasReturnedStreamClosed = true;
@@ -739,7 +775,7 @@ export default class {
 
   private createAudioStream(stream: Readable) {
     return createAudioResource(stream, {
-      inputType: StreamType.WebmOpus,
+      inputType: StreamType.Arbitrary,
       inlineVolume: true,
     });
   }
