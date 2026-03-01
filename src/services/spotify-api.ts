@@ -10,6 +10,7 @@ import {QueuedPlaylist} from './player.js';
 export interface SpotifyTrack {
   name: string;
   artist: string;
+  duration_ms: number;
 }
 
 @injectable()
@@ -70,6 +71,7 @@ export default class {
     return {
       name: track.name,
       artist: track.artists[0].name,
+      duration_ms: track.duration_ms,
     };
   }
 

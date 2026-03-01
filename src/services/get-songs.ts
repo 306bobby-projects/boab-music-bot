@@ -175,22 +175,22 @@ export default class {
     switch (parsed.type) {
       case 'album': {
         const [tracks, playlist] = await this.spotifyAPI.getAlbum(url, playlistLimit);
-        return this.spotifyToYouTube(tracks, shouldSplitChapters, playlist);
+        return this.spotifyToAudio(tracks, shouldSplitChapters, playlist);
       }
 
       case 'playlist': {
         const [tracks, playlist] = await this.spotifyAPI.getPlaylist(url, playlistLimit);
-        return this.spotifyToYouTube(tracks, shouldSplitChapters, playlist);
+        return this.spotifyToAudio(tracks, shouldSplitChapters, playlist);
       }
 
       case 'track': {
         const tracks = [await this.spotifyAPI.getTrack(url)];
-        return this.spotifyToYouTube(tracks, shouldSplitChapters);
+        return this.spotifyToAudio(tracks, shouldSplitChapters);
       }
 
       case 'artist': {
         const tracks = await this.spotifyAPI.getArtist(url, playlistLimit);
-        return this.spotifyToYouTube(tracks, shouldSplitChapters);
+        return this.spotifyToAudio(tracks, shouldSplitChapters);
       }
 
       default: {
@@ -279,8 +279,61 @@ export default class {
     }];
   }
 
-  private async spotifyToYouTube(tracks: SpotifyTrack[], shouldSplitChapters: boolean, playlist?: QueuedPlaylist | undefined): Promise<[SongMetadata[], number, number]> {
-    const promisedResults = tracks.map(async track => this.youtubeAPI.search(`"${track.name}" "${track.artist}"`, shouldSplitChapters));
+  private async spotifyToAudio(tracks: SpotifyTrack[], shouldSplitChapters: boolean, playlist?: QueuedPlaylist | undefined): Promise<[SongMetadata[], number, number]> {
+    const promisedResults = tracks.map(async track => {
+      const query = `"${track.name}" "${track.artist}"`;
+      const [youtubeResults, soundcloudResults] = await Promise.all([
+        this.youtubeAPI.search(query, shouldSplitChapters).catch(() => [] as SongMetadata[]),
+        this.soundcloudSearch(query).catch(() => [] as SongMetadata[]),
+      ]);
+
+      const allResults = [...youtubeResults, ...soundcloudResults];
+
+      if (allResults.length === 0) {
+        throw new Error('No results found');
+      }
+
+      // Simple scoring to find the best match
+      const getScore = (song: SongMetadata) => {
+        let score = 0;
+
+        const title = song.title.toLowerCase();
+        const artist = song.artist.toLowerCase();
+        const targetTitle = track.name.toLowerCase();
+        const targetArtist = track.artist.toLowerCase();
+
+        if (title.includes(targetTitle)) {
+          score += 10;
+        }
+
+        if (artist.includes(targetArtist) || title.includes(targetArtist)) {
+          score += 5;
+        }
+
+        // Penalty for "music video" or "official video" in title if it's from YouTube
+        if (song.source === MediaSource.Youtube && (title.includes('video') || title.includes('music video') || title.includes('official'))) {
+          score -= 2;
+        }
+
+        // Prefer SoundCloud if it's a decent match
+        if (song.source === MediaSource.SoundCloud) {
+          score += 1;
+        }
+
+        // Duration match (Spotify duration is in ms, song.length is in s)
+        const durationDiff = Math.abs((track.duration_ms / 1000) - song.length);
+        if (durationDiff < 2) {
+          score += 5;
+        } else if (durationDiff < 10) {
+          score += 2;
+        }
+
+        return score;
+      };
+
+      return allResults.sort((a, b) => getScore(b) - getScore(a))[0];
+    });
+
     const searchResults = await Promise.allSettled(promisedResults);
 
     let nSongsNotFound = 0;
@@ -288,12 +341,11 @@ export default class {
     // Count songs that couldn't be found
     const songs: SongMetadata[] = searchResults.reduce((accum: SongMetadata[], result) => {
       if (result.status === 'fulfilled') {
-        for (const v of result.value) {
-          accum.push({
-            ...v,
-            ...(playlist ? {playlist} : {}),
-          });
-        }
+        const v = result.value;
+        accum.push({
+          ...v,
+          ...(playlist ? {playlist} : {}),
+        });
       } else {
         nSongsNotFound++;
       }
@@ -302,5 +354,39 @@ export default class {
     }, []);
 
     return [songs, nSongsNotFound, tracks.length];
+  }
+
+  private async soundcloudSearch(query: string): Promise<SongMetadata[]> {
+    const output = await ytDlp(`scsearch1:${query}`, {
+      dumpSingleJson: true,
+      noWarnings: true,
+      preferFreeFormats: true,
+      flatPlaylist: true,
+    });
+
+    const isPlaylist = (info: unknown): info is YtDlpPlaylistOutput =>
+      typeof info === 'object'
+      && info !== null
+      && '_type' in info
+      && (info as YtDlpPlaylistOutput)._type === 'playlist'
+      && 'entries' in info
+      && Array.isArray((info as YtDlpPlaylistOutput).entries);
+
+    if (isPlaylist(output) && output.entries.length > 0) {
+      const entry = output.entries[0];
+      return [{
+        url: entry.url.startsWith('http') ? entry.url : `https://${entry.url}`,
+        source: MediaSource.SoundCloud,
+        title: entry.title ?? 'Unknown Title',
+        artist: entry.uploader ?? output.uploader ?? 'Unknown',
+        length: entry.duration ?? 0,
+        offset: 0,
+        playlist: null,
+        isLive: false,
+        thumbnailUrl: null,
+      }];
+    }
+
+    return [];
   }
 }
