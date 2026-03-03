@@ -181,7 +181,7 @@ export default class {
       to = currentSong.length + currentSong.offset;
     }
 
-    const stream = await this.getStream(currentSong, {seek: realPositionSeconds, to});
+    const resource = await this.getStream(currentSong, {seek: realPositionSeconds, to});
     this.audioPlayer = createAudioPlayer({
       behaviors: {
         // Needs to be somewhat high for livestreams
@@ -189,7 +189,7 @@ export default class {
       },
     });
     this.voiceConnection.subscribe(this.audioPlayer);
-    this.playAudioPlayerResource(this.createAudioStream(stream));
+    this.playAudioPlayerResource(resource);
     this.attachListeners();
     this.startTrackingPosition(positionSeconds);
 
@@ -244,7 +244,7 @@ export default class {
         to = currentSong.length + currentSong.offset;
       }
 
-      const stream = await this.getStream(currentSong, {seek: positionSeconds, to});
+      const resource = await this.getStream(currentSong, {seek: positionSeconds, to});
       this.audioPlayer = createAudioPlayer({
         behaviors: {
           // Needs to be somewhat high for livestreams
@@ -252,7 +252,7 @@ export default class {
         },
       });
       this.voiceConnection.subscribe(this.audioPlayer);
-      this.playAudioPlayerResource(this.createAudioStream(stream));
+      this.playAudioPlayerResource(resource);
 
       this.attachListeners();
 
@@ -508,7 +508,7 @@ export default class {
     return hasha(url);
   }
 
-  private async getStream(song: QueuedSong, options: {seek?: number; to?: number} = {}): Promise<Readable> {
+  private async getStream(song: QueuedSong, options: {seek?: number; to?: number} = {}): Promise<AudioResource> {
     if (this.status === STATUS.PLAYING) {
       this.audioPlayer?.stop();
     } else if (this.status === STATUS.PAUSED) {
@@ -522,8 +522,8 @@ export default class {
     let ffmpegInput: string | null;
     const ffmpegInputOptions: string[] = [];
     let shouldCacheVideo = false;
-
     let format: YtDlpFormat | undefined;
+    let streamType = StreamType.WebmOpus;
 
     ffmpegInput = await this.fileCache.getPathFor(this.getHashForCache(song.url));
 
@@ -546,33 +546,15 @@ export default class {
 
       format = formats.find(filter);
 
-      // Fallback logic
-      const nextBestFormat = (formats: YtDlpFormat[]): YtDlpFormat | undefined => {
-        if (formats.length < 1) {
-          return undefined;
-        }
-
-        // Is_live might be on the main info object
-        if (info.is_live) {
-          // Sort by bitrate for live
-          formats = formats.sort((a, b) => (b.abr ?? 0) - (a.abr ?? 0));
-          return formats[0]; // Simplified for now
-        }
-
-        formats = formats
-          .filter(format => format.abr)
-          .sort((a, b) => (b.abr ?? 0) - (a.abr ?? 0));
-
-        return formats.find(format => !format.vbr) ?? formats[0]; // Standard audio only usually has no vbr
-      };
-
       if (!format) {
-        format = nextBestFormat(info.formats);
+        format = this.nextBestFormat(info.formats);
 
         if (!format) {
           // If still no format is found, throw
           throw new Error('Can\'t find suitable format.');
         }
+
+        streamType = StreamType.Arbitrary;
       }
 
       debug('Using format', format);
@@ -598,6 +580,9 @@ export default class {
         '-reconnect_delay_max',
         '5',
       ]);
+    } else {
+      // If it's cached, it's always the format we requested (WebmOpus)
+      streamType = StreamType.WebmOpus;
     }
 
     if (options.seek) {
@@ -616,7 +601,24 @@ export default class {
       ffmpegInputOptions,
       cache: shouldCacheVideo,
       volumeAdjustment: format?.loudnessDb ? `${-format.loudnessDb}dB` : undefined,
+      streamType,
     });
+  }
+
+  private nextBestFormat(formats: YtDlpFormat[]): YtDlpFormat | undefined {
+    if (formats.length < 1) {
+      return undefined;
+    }
+
+    // Filter for audio-only formats first
+    const audioOnlyFormats = formats.filter(f => f.vcodec === 'none' || f.acodec !== 'none');
+
+    if (audioOnlyFormats.length === 0) {
+      return formats[0];
+    }
+
+    // Sort by audio bitrate (abr) descending
+    return audioOnlyFormats.sort((a, b) => (b.abr ?? 0) - (a.abr ?? 0))[0];
   }
 
   private startTrackingPosition(initalPosition?: number): void {
@@ -701,7 +703,7 @@ export default class {
     }
   }
 
-  private async createReadStream(options: {url: string; formatId?: string; filePath?: string | null; cacheKey: string; ffmpegInputOptions?: string[]; cache?: boolean; volumeAdjustment?: string}): Promise<Readable> {
+  private async createReadStream(options: {url: string; formatId?: string; filePath?: string | null; cacheKey: string; ffmpegInputOptions?: string[]; cache?: boolean; volumeAdjustment?: string; streamType?: StreamType}): Promise<AudioResource> {
     return new Promise((resolve, reject) => {
       const capacitor = new WriteStream();
 
@@ -769,13 +771,13 @@ export default class {
         hasReturnedStreamClosed = true;
       });
 
-      resolve(returnedStream);
+      resolve(this.createAudioStream(returnedStream, options.streamType));
     });
   }
 
-  private createAudioStream(stream: Readable) {
+  private createAudioStream(stream: Readable, inputType: StreamType = StreamType.Arbitrary) {
     return createAudioResource(stream, {
-      inputType: StreamType.Arbitrary,
+      inputType,
       inlineVolume: true,
     });
   }
