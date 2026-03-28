@@ -4,7 +4,8 @@ import yt_dlp
 import asyncio
 import random
 import time
-from config import TOKEN, process_pool, ytdl
+from config import TOKEN, process_pool
+from audio import ytdl
 from player import MusicPlayer
 
 class MusicBot(discord.Client):
@@ -63,16 +64,32 @@ def get_player(interaction: discord.Interaction):
     return bot.players[interaction.guild_id]
 
 @bot.tree.command(name="config", description="Configure bot settings for this server")
-@app_commands.describe(crossfade_duration="Length of crossfade in seconds (1-10)")
-async def config_cmd(interaction: discord.Interaction, crossfade_duration: int = None):
+@app_commands.describe(
+    crossfade_duration="Length of crossfade in seconds (1-10)",
+    default_crossfade="Enable or disable crossfade by default (True/False)"
+)
+async def config_cmd(interaction: discord.Interaction, crossfade_duration: int = None, default_crossfade: bool = None):
     player = get_player(interaction)
+    
+    updated = False
     
     if crossfade_duration is not None:
         if 1 <= crossfade_duration <= 10:
             player.crossfade_duration = crossfade_duration
-            await interaction.response.send_message(f"Crossfade duration set to {crossfade_duration} seconds.")
+            updated = True
         else:
-            await interaction.response.send_message("Please provide a duration between 1 and 10 seconds.", ephemeral=True)
+            return await interaction.response.send_message("Please provide a duration between 1 and 10 seconds.", ephemeral=True)
+            
+    if default_crossfade is not None:
+        player.crossfade_enabled = default_crossfade
+        updated = True
+
+    if updated:
+        await interaction.response.send_message(
+            f"Settings updated:\n"
+            f"- Crossfade: **{'ON' if player.crossfade_enabled else 'OFF'}**\n"
+            f"- Duration: **{player.crossfade_duration}s**"
+        )
     else:
         embed = discord.Embed(title="Server Configuration", color=discord.Color.blue())
         embed.add_field(name="Crossfade Status", value="ON" if player.crossfade_enabled else "OFF", inline=True)
