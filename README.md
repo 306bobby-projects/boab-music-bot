@@ -1,39 +1,46 @@
-# Simple Discord Music Bot
+# BOAB Discord Bot
 
-A simple Discord music bot that plays YouTube songs and playlists.
+A robust, feature-rich Discord music bot built with Python, `discord.py`, and `yt-dlp`. Designed for seamless performance, it supports high-quality streaming from YouTube, SoundCloud, and Spotify, with advanced playback features.
 
-## Prerequisites
+## Features
 
-- Node.js (v16.14.0 or higher)
-- Discord Bot Token (already configured in `.env`)
-- **IMPORTANT:** In the [Discord Developer Portal](https://discord.com/developers/applications):
-    1.  Go to **Bot** settings.
-    2.  Enable **Message Content Intent** under the **Privileged Gateway Intents** section.
-    3.  Save changes.
+- **Slash Commands**: Fully integrated with Discord's modern UI (`/play`, `/skip`, `/stop`, `/queue`, `/config`).
+- **Platform Support**: Plays songs and playlists from YouTube, SoundCloud, and Spotify. Automatically falls back to YouTube for SoundCloud Premium (GO+) tracks.
+- **DJ Crossfade**: Smooth, non-linear crossfading between tracks (simulating a DJ filter sweep) to eliminate awkward silences.
+- **Interactive "Now Playing"**: Rich embed messages with playback controls (Pause/Resume, Skip, Stop) and a dynamic progress bar.
+- **Advanced Queueing**: 
+  - `shuffle`: Randomizes playlists on insertion.
+  - `immediate`: Bypasses the queue to play a song or playlist next.
+- **Resource Management**: Automatically disconnects when the voice channel is empty to save resources.
+- **Dockerized**: Fully containerized for easy deployment and automatic restarts.
 
-## Installation
+## Installation & Setup
 
-1.  The project is already set up in this directory.
-2.  Install dependencies (if not already done):
-    ```bash
-    npm install
-    ```
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/306bobby-projects/boab-music-bot.git
+   cd boab-music-bot
+   ```
 
-## Usage
+2. **Configure your environment**:
+   Create a `.env` file in the root directory:
+   ```env
+   DISCORD_TOKEN=your_discord_bot_token_here
+   ```
 
-Start the bot:
-```bash
-npm start
-```
+3. **Deploy with Docker** (Recommended):
+   The bot includes a complete Docker setup, including `ffmpeg` and Discord's required `davey` encryption library.
+   ```bash
+   docker compose up -d --build
+   ```
 
-## Commands
+## Usage (Commands)
 
-- `!play <song name or URL>` - Plays a song or adds it to the queue. Supports YouTube links and playlists.
-- `!skip` - Skips the current song.
-- `!stop` - Stops the music, clears the queue, and leaves the voice channel.
+- `/play query:<song/url> [shuffle:True/False] [immediate:True/False]` - Search for a song, or paste a link/playlist. Real-time autocomplete suggestions are available!
+- `/skip` - Skip the currently playing track.
+- `/stop` - Stop the music, clear the queue, and disconnect the bot.
+- `/queue` - View the current "Now Playing" track and the upcoming songs in the queue.
+- `/config [crossfade_duration:1-10] [default_crossfade:True/False]` - Adjust server-specific playback settings, such as crossfading behavior.
 
-## Requirements for Voice
-
-- You must be in a voice channel for the `!play` command to work.
-- The bot needs permissions to **Connect** and **Speak** in the voice channel.
-- The bot needs permissions to **Read Messages** and **Send Messages** in the text channel.
+## Continuous Integration
+This project uses GitHub Actions to automatically run syntax checks on commits and publish a new Docker image to the GitHub Container Registry (GHCR) whenever a new version tag (e.g., `v1.0.0`) is pushed.
