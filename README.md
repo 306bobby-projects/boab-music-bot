@@ -28,11 +28,33 @@ A robust, feature-rich Discord music bot built with Python, `discord.py`, and `y
    DISCORD_TOKEN=your_discord_bot_token_here
    ```
 
-3. **Deploy with Docker** (Recommended):
-   The bot includes a complete Docker setup, including `ffmpeg` and Discord's required `davey` encryption library.
-   ```bash
-   docker compose up -d --build
-   ```
+## Deployment
+
+### Run with Docker Compose (Local Build)
+```bash
+docker compose up -d --build
+```
+
+### Run with GHCR Image (Pre-built)
+If you'd like to run the bot without building it locally, you can use the image from the GitHub Container Registry:
+
+1. Create a `docker-compose.yml` file:
+```yaml
+services:
+  musicbot:
+    image: ghcr.io/306bobby-projects/boab-music-bot:latest
+    container_name: discord-music-bot
+    restart: always
+    environment:
+      - DISCORD_TOKEN=your_token_here
+    volumes:
+      - ./server_configs.json:/app/server_configs.json
+```
+
+2. Run the bot:
+```bash
+docker compose up -d
+```
 
 ## Usage (Commands)
 

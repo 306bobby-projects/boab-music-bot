@@ -1,12 +1,13 @@
 services:
   musicbot:
+    image: ghcr.io/${GITHUB_REPOSITORY:-306bobby-projects/boab-music-bot}:latest
     build: .
     container_name: discord-music-bot
     restart: always
-    env_file:
-      - .env
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
     volumes:
-      - .:/app
+      - ./server_configs.json:/app/server_configs.json
     logging:
       driver: "json-file"
       options:
