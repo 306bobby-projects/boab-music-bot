@@ -41,17 +41,24 @@ class MusicBot(discord.Client):
     async def on_voice_state_update(self, member, before, after):
         if member.id == self.user.id:
             return
+        
+        # Check if the bot was in the channel that was left
         if before.channel and any(m.id == self.user.id for m in before.channel.members):
-            non_bot_members = [m for m in before.channel.members if not m.bot]
-            if not non_bot_members:
-                vc = before.channel.guild.voice_client
-                if vc:
-                    player = self.players.get(before.channel.guild.id)
-                    if player:
-                        await player.stop_player()
-                    else:
-                        await vc.disconnect()
-                    print(f"Left empty voice channel in {before.channel.guild.name}")
+            # Wait 30 seconds to see if anyone joins back (prevents accidental leaves)
+            await asyncio.sleep(30)
+            
+            # Re-check the channel
+            if before.channel:
+                non_bot_members = [m for m in before.channel.members if not m.bot]
+                if not non_bot_members:
+                    vc = before.channel.guild.voice_client
+                    if vc:
+                        player = self.players.get(before.channel.guild.id)
+                        if player:
+                            await player.stop_player()
+                        else:
+                            await vc.disconnect()
+                        print(f"Left empty voice channel in {before.channel.guild.name} after 30s timeout")
 
     async def close(self):
         for player in list(self.players.values()):
