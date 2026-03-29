@@ -1,5 +1,6 @@
 import discord
 import asyncio
+import random
 from collections import deque
 from audio import YTDLSource, CrossfadeMixer
 from settings_manager import get_server_config, update_server_config
@@ -53,6 +54,11 @@ class MusicControlView(discord.ui.View):
             btn_np = discord.ui.Button(label="Now Playing", style=discord.ButtonStyle.primary, emoji="🎵", custom_id="show_np")
             btn_np.callback = self.show_np
             self.add_item(btn_np)
+
+            # SHUFFLE
+            btn_shuffle = discord.ui.Button(label="Shuffle", style=discord.ButtonStyle.secondary, emoji="🎲", custom_id="queue_shuffle")
+            btn_shuffle.callback = self.shuffle_queue
+            self.add_item(btn_shuffle)
 
             # NEXT PAGE
             total_pages = max(1, (len(self.player.queue) + 9) // 10)
@@ -109,6 +115,20 @@ class MusicControlView(discord.ui.View):
         self.mode = "np"
         self.update_buttons()
         embed = self.player.build_np_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def shuffle_queue(self, interaction: discord.Interaction):
+        if not self.player.queue:
+            return await interaction.response.send_message("The queue is empty.", ephemeral=True)
+        
+        # Convert deque to list, shuffle, then back to deque
+        temp_list = list(self.player.queue)
+        shuffled = random.sample(temp_list, len(temp_list))
+        self.player.queue = deque(shuffled)
+        
+        self.queue_page = 0
+        self.update_buttons()
+        embed = self.player.build_queue_embed(self.queue_page)
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def queue_back(self, interaction: discord.Interaction):

@@ -6,3 +6,4 @@ davey
 pydub
 beautifulsoup4
 requests
+spotipy
