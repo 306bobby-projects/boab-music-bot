@@ -60,8 +60,8 @@ class CrossfadeMixer(discord.AudioSource):
         if not self.player.crossfade_enabled:
             return
             
-        cf_frames = int(self.player.crossfade_duration * 50)
-        if len(self.a_buffer) < cf_frames:
+        cf_frames = min(int(self.player.crossfade_duration * 50), len(self.a_buffer))
+        if cf_frames == 0:
             return
             
         a_frames = list(self.a_buffer)[-cf_frames:]
@@ -92,11 +92,13 @@ class CrossfadeMixer(discord.AudioSource):
             seg_a = AudioSegment(data=a_raw, sample_width=2, frame_rate=48000, channels=2)
             seg_b = AudioSegment(data=b_raw, sample_width=2, frame_rate=48000, channels=2)
 
-            cf_ms = int(self.player.crossfade_duration * 1000)
+            cf_ms = len(a_frames) * 20
             
-            # Apply low-pass to track 1, high-pass to track 2
-            seg_a = seg_a.low_pass_filter(3000).fade_out(cf_ms)
-            seg_b = seg_b.high_pass_filter(500).fade_in(cf_ms)
+            # Remove the extreme filters that were hollowing out the bass
+            # We apply a subtle low-pass sweep to track 1 (outgoing) so it gets out of the way
+            # But we leave track 2 (incoming) at full frequency so its bass hits immediately and perfectly
+            seg_a = seg_a.low_pass_filter(2500).fade_out(cf_ms)
+            seg_b = seg_b.fade_in(cf_ms)
             
             mixed = seg_a.overlay(seg_b)
             mixed_raw = mixed.raw_data
@@ -109,6 +111,25 @@ class CrossfadeMixer(discord.AudioSource):
             print(f"Crossfade compute error: {e}")
         finally:
             self.crossfade_computing = False
+
+    def trigger_skip(self):
+        if not self.player.crossfade_enabled or self.is_crossfading or self.crossfade_computing:
+            self.finished = True
+            return
+
+        self.a_exhausted = True
+        self._cleanup_track(self.track_a)
+        self.track_a = None
+
+        cf_frames = int(self.player.crossfade_duration * 50)
+        
+        while len(self.a_buffer) > cf_frames:
+            self.a_buffer.pop()
+
+        if self.track_b and not self.crossfade_computing and not self.crossfade_processed:
+            self.start_crossfade_compute()
+        else:
+            self.player.bot.loop.call_soon_threadsafe(self.player.prepare_next_track)
 
     def read(self):
         if self.finished:

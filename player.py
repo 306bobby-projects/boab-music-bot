@@ -8,20 +8,60 @@ class MusicControlView(discord.ui.View):
     def __init__(self, player):
         super().__init__(timeout=None)
         self.player = player
+        self.mode = "np" # "np" or "queue"
+        self.queue_page = 0
         self.update_buttons()
 
     def update_buttons(self):
-        for child in self.children:
-            if child.custom_id == "toggle_cf":
-                if self.player.crossfade_enabled:
-                    child.label = "Crossfade: ON"
-                    child.style = discord.ButtonStyle.success
-                else:
-                    child.label = "Crossfade: OFF"
-                    child.style = discord.ButtonStyle.secondary
+        self.clear_items()
 
-    @discord.ui.button(label="Pause/Resume", style=discord.ButtonStyle.blurple, emoji="⏯️")
-    async def pause_resume(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.mode == "np":
+            # PAUSE / RESUME
+            btn_pause = discord.ui.Button(label="Pause/Resume", style=discord.ButtonStyle.blurple, emoji="⏯️", custom_id="pause_resume")
+            btn_pause.callback = self.pause_resume
+            self.add_item(btn_pause)
+
+            # SKIP
+            btn_skip = discord.ui.Button(label="Skip", style=discord.ButtonStyle.secondary, emoji="⏭️", custom_id="skip")
+            btn_skip.callback = self.skip
+            self.add_item(btn_skip)
+            
+            # QUEUE
+            btn_queue = discord.ui.Button(label="Queue", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="show_queue")
+            btn_queue.callback = self.show_queue
+            self.add_item(btn_queue)
+
+            # CROSSFADE TOGGLE
+            cf_label = "Crossfade: ON" if self.player.crossfade_enabled else "Crossfade: OFF"
+            cf_style = discord.ButtonStyle.success if self.player.crossfade_enabled else discord.ButtonStyle.secondary
+            btn_cf = discord.ui.Button(label=cf_label, style=cf_style, emoji="🔀", custom_id="toggle_cf")
+            btn_cf.callback = self.toggle_crossfade
+            self.add_item(btn_cf)
+
+            # STOP
+            btn_stop = discord.ui.Button(label="Stop", style=discord.ButtonStyle.danger, emoji="⏹️", custom_id="stop")
+            btn_stop.callback = self.stop
+            self.add_item(btn_stop)
+
+        elif self.mode == "queue":
+            # BACK PAGE
+            btn_back = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, emoji="⬅️", custom_id="queue_back", disabled=(self.queue_page == 0))
+            btn_back.callback = self.queue_back
+            self.add_item(btn_back)
+
+            # NOW PLAYING
+            btn_np = discord.ui.Button(label="Now Playing", style=discord.ButtonStyle.primary, emoji="🎵", custom_id="show_np")
+            btn_np.callback = self.show_np
+            self.add_item(btn_np)
+
+            # NEXT PAGE
+            total_pages = max(1, (len(self.player.queue) + 9) // 10)
+            btn_next = discord.ui.Button(label="Next", style=discord.ButtonStyle.secondary, emoji="➡️", custom_id="queue_next", disabled=(self.queue_page >= total_pages - 1))
+            btn_next.callback = self.queue_next
+            self.add_item(btn_next)
+
+
+    async def pause_resume(self, interaction: discord.Interaction):
         vc = interaction.guild.voice_client
         if not vc:
             return await interaction.response.send_message("Not connected to voice.", ephemeral=True)
@@ -35,8 +75,7 @@ class MusicControlView(discord.ui.View):
         else:
             await interaction.response.send_message("Nothing is playing.", ephemeral=True)
 
-    @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary, emoji="⏭️")
-    async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def skip(self, interaction: discord.Interaction):
         vc = interaction.guild.voice_client
         if not vc or (not vc.is_playing() and not vc.is_paused()):
             return await interaction.response.send_message("Nothing to skip.", ephemeral=True)
@@ -49,17 +88,43 @@ class MusicControlView(discord.ui.View):
             vc.stop()
         await interaction.response.send_message("Skipped!", ephemeral=True)
 
-    @discord.ui.button(label="Crossfade: OFF", style=discord.ButtonStyle.secondary, emoji="🔀", custom_id="toggle_cf")
-    async def toggle_crossfade(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def toggle_crossfade(self, interaction: discord.Interaction):
         self.player.crossfade_enabled = not self.player.crossfade_enabled
         update_server_config(interaction.guild_id, crossfade_enabled=self.player.crossfade_enabled)
         self.update_buttons()
         await interaction.response.edit_message(view=self)
 
-    @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger, emoji="⏹️")
-    async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def stop(self, interaction: discord.Interaction):
         await self.player.stop_player()
         await interaction.response.send_message("Stopped and cleared queue.", ephemeral=True)
+        
+    async def show_queue(self, interaction: discord.Interaction):
+        self.mode = "queue"
+        self.queue_page = 0
+        self.update_buttons()
+        embed = self.player.build_queue_embed(self.queue_page)
+        await interaction.response.edit_message(embed=embed, view=self)
+        
+    async def show_np(self, interaction: discord.Interaction):
+        self.mode = "np"
+        self.update_buttons()
+        embed = self.player.build_np_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def queue_back(self, interaction: discord.Interaction):
+        if self.queue_page > 0:
+            self.queue_page -= 1
+        self.update_buttons()
+        embed = self.player.build_queue_embed(self.queue_page)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def queue_next(self, interaction: discord.Interaction):
+        total_pages = max(1, (len(self.player.queue) + 9) // 10)
+        if self.queue_page < total_pages - 1:
+            self.queue_page += 1
+        self.update_buttons()
+        embed = self.player.build_queue_embed(self.queue_page)
+        await interaction.response.edit_message(embed=embed, view=self)
 
 
 class MusicPlayer:
@@ -134,37 +199,76 @@ class MusicPlayer:
             
         return f"`{bar}`\n**{self.format_time(elapsed)} / {self.format_time(duration)}**"
 
+    def build_queue_embed(self, page=0):
+        embed = discord.Embed(title=f"Queue for {self.guild.name}", color=discord.Color.blue())
+        
+        if self.current_song_data: 
+            embed.add_field(name="Now Playing", value=self.current_song_data['song'].get('title', 'Unknown'), inline=False)
+        else:
+            embed.add_field(name="Now Playing", value="Nothing", inline=False)
+
+        if self.queue:
+            items_per_page = 10
+            total_pages = max(1, (len(self.queue) + items_per_page - 1) // items_per_page)
+            
+            # Ensure page is within bounds
+            page = max(0, min(page, total_pages - 1))
+            
+            start_idx = page * items_per_page
+            end_idx = start_idx + items_per_page
+            
+            queue_slice = list(self.queue)[start_idx:end_idx]
+            
+            q_list = "\n".join([f"**{start_idx + i + 1}.** {s['song'].get('title', 'Unknown')}" for i, s in enumerate(queue_slice)])
+            
+            footer_text = f"Page {page + 1}/{total_pages} | Total Songs: {len(self.queue)}"
+            embed.set_footer(text=footer_text)
+            
+            embed.add_field(name="Up Next", value=q_list, inline=False)
+        else:
+            embed.add_field(name="Up Next", value="The queue is empty.", inline=False)
+            
+        return embed
+
     def build_np_embed(self):
         song_data = self.current_song_data['song']
         requester = self.current_song_data['requester']
         
         url = song_data.get('webpage_url') or song_data.get('url')
         title = song_data.get('title', 'Unknown')
-        thumb = song_data.get('thumbnail')
         
+        # yt-dlp sometimes puts thumbnails in a list, sometimes directly as 'thumbnail'
+        thumb = song_data.get('thumbnail')
+        if not thumb and 'thumbnails' in song_data and isinstance(song_data['thumbnails'], list) and len(song_data['thumbnails']) > 0:
+            thumb = song_data['thumbnails'][-1].get('url')
+        
+        # Fallback to standard YouTube thumbnail format if we only have an ID
+        if not thumb and song_data.get('id'):
+            thumb = f"https://i.ytimg.com/vi/{song_data['id']}/maxresdefault.jpg"
+            
         desc = f"[{title}]({url})\n\n{self.generate_progress_bar()}"
         
         if self.mixer and getattr(self.mixer, 'is_crossfading', False):
             desc += "\n\n🔀 **Crossfading to next track...**"
         
         embed = discord.Embed(title="Now Playing", description=desc, color=discord.Color.green())
-        if thumb: embed.set_thumbnail(url=thumb)
+        if thumb: embed.set_image(url=thumb) # Changed from set_thumbnail to set_image for larger artwork
         embed.add_field(name="Requested By", value=requester.mention)
         return embed
 
     async def resend_np(self):
         embed = self.build_np_embed()
-        view = MusicControlView(self)
+        self.current_view = MusicControlView(self)
         
         if self.np_message:
             try:
-                await self.np_message.edit(embed=embed, view=view)
+                await self.np_message.edit(embed=embed, view=self.current_view)
                 self.start_np_updater()
                 return
             except:
                 self.np_message = None
 
-        self.np_message = await self.channel.send(embed=embed, view=view)
+        self.np_message = await self.channel.send(embed=embed, view=self.current_view)
         self.start_np_updater()
 
     def start_np_updater(self):
@@ -177,9 +281,10 @@ class MusicPlayer:
             await asyncio.sleep(5)
             if self.np_message and self.mixer and self.current_song_data:
                 try:
-                    embed = self.build_np_embed()
-                    view = MusicControlView(self)
-                    await self.np_message.edit(embed=embed, view=view)
+                    # Only update the embed if we are in "np" mode
+                    if hasattr(self, 'current_view') and self.current_view.mode == "np":
+                        embed = self.build_np_embed()
+                        await self.np_message.edit(embed=embed, view=self.current_view)
                 except Exception:
                     pass
 
