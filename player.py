@@ -103,7 +103,7 @@ class MusicPlayer:
             if not url: return None
             return await YTDLSource.from_url(url, requester, loop=self.bot.loop, stream=True)
         except Exception as e:
-            await self.channel.send(f'Error processing {song_data.get("title", "Unknown")}: {e}')
+            print(f'[Player] Error processing {song_data.get("title", "Unknown")}: {e}')
             return None
 
     def format_time(self, seconds):
