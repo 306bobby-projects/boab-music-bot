@@ -2,6 +2,15 @@
 
 All notable changes to the BOAB Discord Bot project will be documented in this file.
 
+## [1.0.1] - 2026-03-29
+
+### Fixed
+- **Empty Channel Disconnect**: Added a 30-second grace period to prevent the bot from leaving instantly due to minor network blips or rapid user transitions.
+- **Apple Music Scraper**: Improved internal JSON extraction to handle larger playlists and bypass web-hydration limits.
+- **Spotify Integration**: Switched to high-performance embed scraping to bypass 403 Forbidden errors caused by API premium requirements.
+- **Queue Errors**: Fixed a crash when encountering hidden/deleted videos in massive YouTube playlists (`NoneType` iteration error).
+- **Audio Quality**: Optimized the mixing engine to prevent 16-bit integer overflows and dynamic range compression during crossfades.
+
 ## [1.0.0] - 2026-03-29
 
 ### Added
