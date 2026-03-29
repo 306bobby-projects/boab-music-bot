@@ -8,6 +8,7 @@ from config import TOKEN, process_pool
 from audio import ytdl
 from player import MusicPlayer
 from settings_manager import update_server_config
+from apple_music import parse_apple_music_link
 
 class MusicBot(discord.Client):
     def __init__(self):
@@ -115,6 +116,49 @@ async def play(interaction: discord.Interaction, query: str, shuffle: bool = Fal
         await interaction.user.voice.channel.connect()
 
     player = get_player(interaction)
+    
+    # Check for Apple Music
+    if 'music.apple.com' in query:
+        am_data = parse_apple_music_link(query)
+        if am_data['type'] == 'error':
+            return await interaction.followup.send(f"Error: {am_data['message']}")
+            
+        queries = am_data['queries']
+        title = am_data['title']
+        
+        if not queries:
+            return await interaction.followup.send("Could not find any tracks for that Apple Music link.")
+            
+        if am_data['type'] == 'song':
+            await interaction.followup.send(f"Searching for Apple Music track: **{title}**...")
+            search_query = f"ytsearch1:{queries[0]}"
+            info = await bot.loop.run_in_executor(process_pool, lambda: ytdl.extract_info(search_query, download=False))
+            if info and 'entries' in info and info['entries']:
+                player.add_to_queue(info['entries'][0], interaction.user, immediate=immediate)
+                await interaction.edit_original_response(content=f"Added **{title}** to queue.")
+            else:
+                await interaction.edit_original_response(content=f"Could not find a YouTube match for **{title}**.")
+            return
+            
+        elif am_data['type'] in ['album', 'playlist']:
+            if shuffle:
+                queries = random.sample(queries, len(queries))
+
+            item_type = "album" if am_data['type'] == 'album' else "playlist"
+            await interaction.followup.send(f"Processing Apple Music {item_type} **{title}** ({len(queries)} songs)...")
+
+            # For collections, we'll queue them up as unresolved search queries
+            entries = [{'title': q, 'url': None} for q in queries]
+
+            if immediate:
+                for entry in reversed(entries):
+                    player.add_to_queue(entry, interaction.user, immediate=True)
+            else:
+                for entry in entries:
+                    player.add_to_queue(entry, interaction.user, immediate=False)
+
+            await interaction.edit_original_response(content=f"Added **{len(queries)}** songs from **{title}** to queue.")
+            return
     search_query = query if query.startswith('http') else f"ytsearch:{query}"
 
     try:

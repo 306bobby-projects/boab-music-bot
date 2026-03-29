@@ -165,6 +165,20 @@ class MusicPlayer:
     async def get_source(self, song_data, requester):
         try:
             url = song_data.get('webpage_url') or song_data.get('url')
+            
+            # If no URL exists but we have a title (like from an Apple Music album scrape)
+            # we do a just-in-time YouTube search to find the audio stream
+            if not url and 'title' in song_data:
+                from config import process_pool
+                from audio import ytdl
+                search_query = f"ytsearch1:{song_data['title']}"
+                info = await self.bot.loop.run_in_executor(process_pool, lambda: ytdl.extract_info(search_query, download=False))
+                if info and 'entries' in info and info['entries']:
+                    found_song = info['entries'][0]
+                    url = found_song.get('webpage_url') or found_song.get('url')
+                    # Update the stored song_data so the embed shows the real thumbnail/title
+                    song_data.update(found_song)
+            
             if not url: return None
             return await YTDLSource.from_url(url, requester, loop=self.bot.loop, stream=True)
         except Exception as e:
