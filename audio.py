@@ -2,6 +2,7 @@ import discord
 import yt_dlp
 import asyncio
 import audioop
+import subprocess
 from collections import deque
 from config import process_pool, ytdl_format_options, ffmpeg_options
 
@@ -26,14 +27,57 @@ class YTDLSource(discord.AudioSource):
     @classmethod
     async def from_url(cls, url, requester, *, loop=None, stream=False):
         loop = loop or asyncio.get_event_loop()
-        ytdl_stream = yt_dlp.YoutubeDL({**ytdl_format_options, 'extract_flat': False})
-        data = await loop.run_in_executor(process_pool, lambda: ytdl_stream.extract_info(url, download=not stream))
+        
+        ytdl_stream = yt_dlp.YoutubeDL({
+            **ytdl_format_options, 
+            'extract_flat': False,
+            'format': 'bestaudio/best',
+            'quiet': True,
+            'noplaylist': True,
+        })
+        
+        data = await loop.run_in_executor(process_pool, lambda: ytdl_stream.extract_info(url, download=False))
 
         if 'entries' in data:
             data = data['entries'][0]
 
-        filename = data['url'] if stream else ytdl_stream.prepare_filename(data)
-        source = discord.FFmpegPCMAudio(filename, **ffmpeg_options)
+        # Use yt-dlp to stream the data and pipe it into FFmpeg
+        # This bypasses all HLS/TLS protocol issues in FFmpeg
+        ytdlp_command = [
+            'yt-dlp',
+            '--no-warnings',
+            '-f', 'bestaudio/best',
+            '-o', '-',
+            url
+        ]
+        
+        print(f'[Audio] Running yt-dlp pipe for: {url}')
+        ytdlp_proc = subprocess.Popen(ytdlp_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # We tell FFmpeg to read from stdin (pipe:0)
+        source = discord.FFmpegPCMAudio(
+            ytdlp_proc.stdout, 
+            pipe=True, 
+            before_options=None, 
+            options=ffmpeg_options['options']
+        )
+        
+        # We wrap the cleanup to ensure both processes are killed
+        original_cleanup = source.cleanup
+        def combined_cleanup():
+            print(f'[Audio] Cleaning up pipe for: {url}')
+            try:
+                # Log any stderr from yt-dlp on cleanup if it failed
+                if ytdlp_proc.poll() is not None and ytdlp_proc.returncode != 0:
+                    err = ytdlp_proc.stderr.read().decode()
+                    if err: print(f'[Audio] yt-dlp pipe error: {err}')
+                
+                ytdlp_proc.terminate()
+                ytdlp_proc.wait(timeout=1)
+            except: pass
+            original_cleanup()
+        
+        source.cleanup = combined_cleanup
         return cls(source, data=data, requester=requester)
 
 class CrossfadeMixer(discord.AudioSource):
@@ -94,16 +138,13 @@ class CrossfadeMixer(discord.AudioSource):
 
             cf_ms = len(a_frames) * 20
             
-            # Remove the extreme filters that were hollowing out the bass
-            # We apply a subtle low-pass sweep to track 1 (outgoing) so it gets out of the way
-            # But we leave track 2 (incoming) at full frequency so its bass hits immediately and perfectly
+            # DJ Filters
             seg_a = seg_a.low_pass_filter(2500).fade_out(cf_ms)
             seg_b = seg_b.fade_in(cf_ms)
             
             mixed = seg_a.overlay(seg_b)
             mixed_raw = mixed.raw_data
             
-            # Repackage into 20ms chunks (3840 bytes)
             mixed_frames = [mixed_raw[i:i+3840] for i in range(0, len(mixed_raw), 3840)]
             self.mixed_buffer = deque(mixed_frames)
             self.crossfade_processed = True
@@ -146,8 +187,7 @@ class CrossfadeMixer(discord.AudioSource):
                 if not frame or len(frame) < 3840:
                     self.a_exhausted = True
                     
-                    # Trim trailing silence from the end of the song
-                    # 256 is roughly -42 dBFS (silence)
+                    # Trim trailing silence
                     while self.a_buffer and len(self.a_buffer[-1]) == 3840 and audioop.rms(self.a_buffer[-1], 2) < 256:
                         self.a_buffer.pop()
                         
@@ -164,16 +204,14 @@ class CrossfadeMixer(discord.AudioSource):
             if self.crossfade_processed and self.mixed_buffer:
                 frame = self.mixed_buffer.popleft()
                 if self.a_buffer:
-                    self.a_buffer.popleft() # discard original A frame
+                    self.a_buffer.popleft()
                 
-                # Make sure frame is exactly 3840 bytes to prevent stutter
                 if len(frame) < 3840:
                     frame = frame + b'\x00' * (3840 - len(frame))
                 elif len(frame) > 3840:
                     frame = frame[:3840]
                     
                 if not self.mixed_buffer:
-                    # Transition complete
                     self._cleanup_track(self.track_a)
                     self.track_a = self.track_b
                     self.track_b = None
@@ -183,9 +221,6 @@ class CrossfadeMixer(discord.AudioSource):
                     self.player.bot.loop.call_soon_threadsafe(self.player.on_track_transition)
                     
                 return audioop.mul(frame, 2, self.player.volume)
-            elif not self.crossfade_computing:
-                # If processing failed, we fallback to standard playback below
-                pass
 
         # 2. STANDARD PLAYBACK / FALLBACK
         self.is_crossfading = False
@@ -210,7 +245,6 @@ class CrossfadeMixer(discord.AudioSource):
                 self.finished = True
             return b''
 
-        # If Crossfade was disabled
         if not self.player.crossfade_enabled and ready_to_switch and len(self.a_buffer) == 0 and has_b:
             self._cleanup_track(self.track_a)
             self.track_a = self.track_b
@@ -234,7 +268,7 @@ class CrossfadeMixer(discord.AudioSource):
             self.player.bot.loop.call_soon_threadsafe(self.player.on_track_transition)
             return audioop.mul(frame_b, 2, self.player.volume)
 
-        # 3. EMERGENCY AUDIOOP CROSSFADE (If pydub fails)
+        # 3. EMERGENCY AUDIOOP CROSSFADE
         if self.player.crossfade_enabled and ready_to_switch and has_a:
             if self.track_b:
                 f_b = self.track_b.read()

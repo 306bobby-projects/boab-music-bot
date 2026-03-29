@@ -25,6 +25,6 @@ ytdl_format_options = {
 }
 
 ffmpeg_options = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -allowed_extensions ALL -protocol_whitelist file,http,https,tcp,tls,crypto',
     'options': '-vn -threads 1 -af "silenceremove=start_periods=1:start_duration=0.1:start_threshold=-50dB"',
 }

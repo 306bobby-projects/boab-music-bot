@@ -262,10 +262,30 @@ async def play(interaction: discord.Interaction, query: str, shuffle: bool = Fal
 async def play_autocomplete(interaction: discord.Interaction, current: str):
     if not current or len(current) < 3: return []
     try:
+        # Autocomplete has a strict 3s limit. We use 2.0s to be even safer.
         loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(process_pool, lambda: ytdl.extract_info(f"ytsearch5:{current}", download=False))
-        return [app_commands.Choice(name=f"{e.get('title', 'Unknown')[:97]}...", value=e.get('webpage_url') or e.get('url')) for e in info['entries'] if e]
-    except: return []
+        search_query = f"ytsearch5:{current}"
+        
+        info = await asyncio.wait_for(
+            loop.run_in_executor(process_pool, lambda: ytdl.extract_info(search_query, download=False)),
+            timeout=2.0
+        )
+        
+        if not info or 'entries' not in info:
+            return []
+
+        choices = [
+            app_commands.Choice(name=f"{e.get('title', 'Unknown')[:97]}...", value=e.get('webpage_url') or e.get('url'))
+            for e in info['entries'] if e
+        ]
+        
+        # Check if the interaction has already expired
+        if interaction.is_expired():
+            return []
+            
+        return choices
+    except (asyncio.TimeoutError, Exception):
+        return []
 
 @bot.tree.command(name="skip", description="Skips current song")
 async def skip(interaction: discord.Interaction):
