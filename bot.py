@@ -7,6 +7,7 @@ import time
 from config import TOKEN, process_pool
 from audio import ytdl
 from player import MusicPlayer
+from settings_manager import update_server_config
 
 class MusicBot(discord.Client):
     def __init__(self):
@@ -72,19 +73,23 @@ async def config_cmd(interaction: discord.Interaction, crossfade_duration: int =
     player = get_player(interaction)
     
     updated = False
+    updates = {}
     
     if crossfade_duration is not None:
         if 1 <= crossfade_duration <= 10:
             player.crossfade_duration = crossfade_duration
+            updates["crossfade_duration"] = crossfade_duration
             updated = True
         else:
             return await interaction.response.send_message("Please provide a duration between 1 and 10 seconds.", ephemeral=True)
             
     if default_crossfade is not None:
         player.crossfade_enabled = default_crossfade
+        updates["crossfade_enabled"] = default_crossfade
         updated = True
 
     if updated:
+        update_server_config(interaction.guild_id, **updates)
         await interaction.response.send_message(
             f"Settings updated:\n"
             f"- Crossfade: **{'ON' if player.crossfade_enabled else 'OFF'}**\n"
@@ -95,6 +100,7 @@ async def config_cmd(interaction: discord.Interaction, crossfade_duration: int =
         embed.add_field(name="Crossfade Status", value="ON" if player.crossfade_enabled else "OFF", inline=True)
         embed.add_field(name="Crossfade Duration", value=f"{player.crossfade_duration} seconds", inline=True)
         await interaction.response.send_message(embed=embed)
+
 
 @bot.tree.command(name="play", description="Plays a song or playlist")
 @app_commands.describe(
@@ -171,9 +177,12 @@ async def play_autocomplete(interaction: discord.Interaction, current: str):
 async def skip(interaction: discord.Interaction):
     if interaction.guild.voice_client and (interaction.guild.voice_client.is_playing() or interaction.guild.voice_client.is_paused()):
         player = bot.players.get(interaction.guild_id)
-        if player and player.mixer:
-            player.mixer.finished = True
-        interaction.guild.voice_client.stop()
+        if player and player.mixer and player.crossfade_enabled:
+            player.mixer.trigger_skip()
+        else:
+            if player and player.mixer:
+                player.mixer.finished = True
+            interaction.guild.voice_client.stop()
         await interaction.response.send_message("Skipped!", ephemeral=True)
     else:
         await interaction.response.send_message("Nothing playing.", ephemeral=True)

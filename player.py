@@ -2,6 +2,7 @@ import discord
 import asyncio
 from collections import deque
 from audio import YTDLSource, CrossfadeMixer
+from settings_manager import get_server_config, update_server_config
 
 class MusicControlView(discord.ui.View):
     def __init__(self, player):
@@ -40,14 +41,18 @@ class MusicControlView(discord.ui.View):
         if not vc or (not vc.is_playing() and not vc.is_paused()):
             return await interaction.response.send_message("Nothing to skip.", ephemeral=True)
 
-        if self.player.mixer:
-            self.player.mixer.finished = True
-        vc.stop()
+        if self.player.mixer and self.player.crossfade_enabled:
+            self.player.mixer.trigger_skip()
+        else:
+            if self.player.mixer:
+                self.player.mixer.finished = True
+            vc.stop()
         await interaction.response.send_message("Skipped!", ephemeral=True)
 
     @discord.ui.button(label="Crossfade: OFF", style=discord.ButtonStyle.secondary, emoji="🔀", custom_id="toggle_cf")
     async def toggle_crossfade(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.player.crossfade_enabled = not self.player.crossfade_enabled
+        update_server_config(interaction.guild_id, crossfade_enabled=self.player.crossfade_enabled)
         self.update_buttons()
         await interaction.response.edit_message(view=self)
 
@@ -67,8 +72,10 @@ class MusicPlayer:
         self.queue_event = asyncio.Event()
         
         self.volume = 0.5
-        self.crossfade_enabled = False
-        self.crossfade_duration = 5
+        
+        config = get_server_config(self.guild.id)
+        self.crossfade_enabled = config.get("crossfade_enabled", False)
+        self.crossfade_duration = config.get("crossfade_duration", 5)
         
         self.mixer = None
         self.np_message = None
@@ -222,16 +229,19 @@ class MusicPlayer:
                     break
                     
                 if self.prepare_next_event.is_set():
-                    if self.queue:
+                    next_source = None
+                    next_item = None
+                    
+                    while self.queue and next_source is None:
                         next_item = self.queue.popleft()
                         if not self.queue: self.queue_event.clear()
                         
                         next_source = await self.get_source(next_item['song'], next_item['requester'])
-                        if next_source:
-                            self.mixer.track_b = next_source
-                            self.next_song_data = next_item
-                    else:
-                        pass
+                    
+                    if next_source:
+                        self.mixer.track_b = next_source
+                        self.next_song_data = next_item
+                        self.mixer.start_crossfade_compute()
                         
             if self.mixer:
                 self.mixer.cleanup()
